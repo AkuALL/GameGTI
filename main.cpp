@@ -409,8 +409,8 @@ void keyboard(unsigned char key, int x, int y) {
     switch (key) {
         case 'w': case 'W': movePlayer( speed,  0); break;
         case 's': case 'S': movePlayer(-speed,  0); break;
-        case 'a': case 'A': movePlayer(0, -speed); break;
-        case 'd': case 'D': movePlayer(0,  speed); break;
+        case 'd': case 'D': movePlayer(0, -speed); break;
+        case 'a': case 'A': movePlayer(0,  speed); break;
         case 'h': case 'H':
             if (isNearHidingSpot()) playerIsHiding = !playerIsHiding;
             else playerIsHiding = false;
