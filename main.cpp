@@ -425,8 +425,8 @@ void specialKeys(int key, int x, int y) {
     switch (key) {
         case GLUT_KEY_UP:    movePlayer( speed, 0); break;
         case GLUT_KEY_DOWN:  movePlayer(-speed, 0); break;
-        case GLUT_KEY_LEFT:  movePlayer(0, -speed); break;
-        case GLUT_KEY_RIGHT: movePlayer(0,  speed); break;
+        case GLUT_KEY_LEFT:  movePlayer(0,  speed); break;
+        case GLUT_KEY_RIGHT: movePlayer(0, -speed); break;
     }
     glutPostRedisplay();
 }
