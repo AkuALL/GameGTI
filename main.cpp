@@ -10,7 +10,9 @@
 // ================= CONSTANTS =================
 #define MAP_MIN -14.0f
 #define MAP_MAX  14.0f
+#ifndef M_PI
 #define M_PI 3.14159265f
+#endif
 
 // ================= GAME STATE =================
 enum GameState { STATE_MENU, STATE_PLAYING, STATE_GAMEOVER, STATE_WIN };
@@ -30,6 +32,8 @@ float lookDistance = 6.0f;
 // ================= MOUSE =================
 int lastMouseX = 400;
 float mouseSensitivity = 0.2f;
+int windowWidth = 800, windowHeight = 600;
+bool ignoreNextMouseMove = false;
 
 // ================= WALLS =================
 struct Wall { float x, z, sx, sz; };
@@ -96,6 +100,7 @@ struct Enemy {
     float angle;
     float speed;       // units per frame (seperti kode kedua)
     int   waypointIdx;
+    int   stuckFrames;
     float wpX[8], wpZ[8];
     int   wpCount;
 };
@@ -122,6 +127,7 @@ bool wonWithTreasure = false;
 
 // ================= FORWARD DECLARATIONS =================
 bool checkCollision(float newX, float newZ);
+bool pathExists(float startX, float startZ, float targetX, float targetZ);
 void resetGame();
 
 // ===================================================
@@ -174,35 +180,35 @@ void initEnemies() {
     // speed = units per frame (sama seperti kode kedua: 0.05f normal)
 
     // ── Enemy 0: patrol top-left quadrant ──
-    enemies[0].x = -12.0f; enemies[0].z = 12.0f;
-    enemies[0].angle = 0; enemies[0].speed = 0.05f;
+    enemies[0].x = -12.5f; enemies[0].z = 12.4f;
+    enemies[0].angle = 0; enemies[0].speed = 0.05f; enemies[0].stuckFrames = 0;
     enemies[0].waypointIdx = 0; enemies[0].wpCount = 4;
-    enemies[0].wpX[0]=-12.0f; enemies[0].wpZ[0]= 12.0f;
-    enemies[0].wpX[1]=-12.0f; enemies[0].wpZ[1]=  7.5f;
-    enemies[0].wpX[2]= -6.0f; enemies[0].wpZ[2]=  7.5f;
-    enemies[0].wpX[3]= -6.0f; enemies[0].wpZ[3]= 12.0f;
+    enemies[0].wpX[0]=-12.5f; enemies[0].wpZ[0]= 12.4f;
+    enemies[0].wpX[1]=-11.0f; enemies[0].wpZ[1]= 12.4f;
+    enemies[0].wpX[2]=-11.0f; enemies[0].wpZ[2]= 10.7f;
+    enemies[0].wpX[3]=-12.5f; enemies[0].wpZ[3]= 10.7f;
 
     // ── Enemy 1: patrol top-right quadrant ──
     enemies[1].x = 11.5f; enemies[1].z = 12.0f;
-    enemies[1].angle = 0; enemies[1].speed = 0.05f;
+    enemies[1].angle = 0; enemies[1].speed = 0.05f; enemies[1].stuckFrames = 0;
     enemies[1].waypointIdx = 0; enemies[1].wpCount = 4;
     enemies[1].wpX[0]= 11.5f; enemies[1].wpZ[0]= 12.0f;
     enemies[1].wpX[1]= 11.5f; enemies[1].wpZ[1]=  7.0f;
-    enemies[1].wpX[2]=  8.0f; enemies[1].wpZ[2]=  7.0f;
-    enemies[1].wpX[3]=  8.0f; enemies[1].wpZ[3]= 12.0f;
+    enemies[1].wpX[2]= 12.8f; enemies[1].wpZ[2]=  7.0f;
+    enemies[1].wpX[3]= 12.8f; enemies[1].wpZ[3]= 12.0f;
 
     // ── Enemy 2: patrol center-left ──
-    enemies[2].x = -12.0f; enemies[2].z = -5.5f;
-    enemies[2].angle = 0; enemies[2].speed = 0.05f;
+    enemies[2].x = -12.5f; enemies[2].z = -5.5f;
+    enemies[2].angle = 0; enemies[2].speed = 0.05f; enemies[2].stuckFrames = 0;
     enemies[2].waypointIdx = 0; enemies[2].wpCount = 4;
-    enemies[2].wpX[0]=-12.0f; enemies[2].wpZ[0]= -5.5f;
-    enemies[2].wpX[1]=-12.0f; enemies[2].wpZ[1]= -9.5f;
-    enemies[2].wpX[2]= -5.0f; enemies[2].wpZ[2]= -9.5f;
-    enemies[2].wpX[3]= -5.0f; enemies[2].wpZ[3]= -5.5f;
+    enemies[2].wpX[0]=-12.5f; enemies[2].wpZ[0]= -5.5f;
+    enemies[2].wpX[1]=-12.5f; enemies[2].wpZ[1]= -8.8f;
+    enemies[2].wpX[2]=-11.0f; enemies[2].wpZ[2]= -8.8f;
+    enemies[2].wpX[3]=-11.0f; enemies[2].wpZ[3]= -5.5f;
 
     // ── Enemy 3: patrol center ──
     enemies[3].x = 4.0f; enemies[3].z = -3.5f;
-    enemies[3].angle = 0; enemies[3].speed = 0.06f;
+    enemies[3].angle = 0; enemies[3].speed = 0.06f; enemies[3].stuckFrames = 0;
     enemies[3].waypointIdx = 0; enemies[3].wpCount = 4;
     enemies[3].wpX[0]= 4.0f; enemies[3].wpZ[0]= -3.0f;
     enemies[3].wpX[1]= 8.5f; enemies[3].wpZ[1]= -3.0f;
@@ -211,7 +217,7 @@ void initEnemies() {
 
     // ── Enemy 4: patrol bottom-right ──
     enemies[4].x = 11.5f; enemies[4].z = -6.0f;
-    enemies[4].angle = 0; enemies[4].speed = 0.055f;
+    enemies[4].angle = 0; enemies[4].speed = 0.055f; enemies[4].stuckFrames = 0;
     enemies[4].waypointIdx = 0; enemies[4].wpCount = 4;
     enemies[4].wpX[0]= 11.5f; enemies[4].wpZ[0]= -6.0f;
     enemies[4].wpX[1]= 11.5f; enemies[4].wpZ[1]=-13.0f;
@@ -236,11 +242,34 @@ void resetGame() {
     flickerIntensity = 1.0f;
     breathTimer = 0.0f;
 
-    randomPos(playerX, playerZ);
+    const float exitInsideX = 13.2f;
+    const float exitInsideZ = -10.0f;
+
+    int playerTries = 0;
+    do {
+        randomPos(playerX, playerZ);
+        playerTries++;
+    } while (!pathExists(playerX, playerZ, exitInsideX, exitInsideZ) && playerTries < 1000);
+    if (!pathExists(playerX, playerZ, exitInsideX, exitInsideZ)) {
+        playerX = 12.6f;
+        playerZ = -10.0f;
+    }
 
     float tx, tz;
-    do { randomPos(tx, tz); }
-    while (fabs(tx - playerX) < 3.0f && fabs(tz - playerZ) < 3.0f);
+    int treasureTries = 0;
+    do {
+        randomPos(tx, tz);
+        treasureTries++;
+    } while (
+        ((fabs(tx - playerX) < 3.0f && fabs(tz - playerZ) < 3.0f) ||
+         !pathExists(playerX, playerZ, tx, tz) ||
+         !pathExists(tx, tz, exitInsideX, exitInsideZ)) &&
+        treasureTries < 1000
+    );
+    if (!pathExists(playerX, playerZ, tx, tz) || !pathExists(tx, tz, exitInsideX, exitInsideZ)) {
+        tx = 12.6f;
+        tz = -9.0f;
+    }
     treasureX = tx; treasureZ = tz;
 
     initEnemies();
@@ -279,14 +308,166 @@ void checkExit() {
 }
 
 // ===================================================
+// ENEMY COLLISION (biar enemy tidak tembus tembok)
+// ===================================================
+bool checkEnemyCollision(float newX, float newZ) {
+    // Radius collision dibuat kecil dan bulat supaya enemy tidak mudah nyangkut di sudut tembok.
+    const float enemyRadius = 0.18f;
+
+    // batas map
+    if (newX < MAP_MIN + enemyRadius || newX > MAP_MAX - enemyRadius ||
+        newZ < MAP_MIN + enemyRadius || newZ > MAP_MAX - enemyRadius)
+        return true;
+
+    // Circle vs rectangle: lebih toleran daripada AABB-vs-AABB untuk gerakan musuh.
+    for (int i = 0; i < wallCount; i++) {
+        float wx = walls[i].x, wz = walls[i].z;
+        float halfX = walls[i].sx / 2.0f, halfZ = walls[i].sz / 2.0f;
+        float closestX = std::max(wx - halfX, std::min(newX, wx + halfX));
+        float closestZ = std::max(wz - halfZ, std::min(newZ, wz + halfZ));
+        float dx = newX - closestX;
+        float dz = newZ - closestZ;
+
+        if (dx * dx + dz * dz < enemyRadius * enemyRadius)
+            return true;
+    }
+    return false;
+}
+
+bool pathExists(float startX, float startZ, float targetX, float targetZ) {
+    const float gridStep = 0.5f;
+    const int gridSize = (int)((MAP_MAX - MAP_MIN) / gridStep) + 1;
+
+    auto toIndex = [&](float v) {
+        int idx = (int)roundf((v - MAP_MIN) / gridStep);
+        if (idx < 0) idx = 0;
+        if (idx >= gridSize) idx = gridSize - 1;
+        return idx;
+    };
+
+    int sx = toIndex(startX), sz = toIndex(startZ);
+    int tx = toIndex(targetX), tz = toIndex(targetZ);
+
+    std::vector<int> visited(gridSize * gridSize, 0);
+    std::vector<int> queue;
+    queue.reserve(gridSize * gridSize);
+
+    auto nodeId = [&](int x, int z) { return z * gridSize + x; };
+    auto worldX = [&](int x) { return MAP_MIN + x * gridStep; };
+    auto worldZ = [&](int z) { return MAP_MIN + z * gridStep; };
+    auto walkable = [&](int x, int z) {
+        return x >= 0 && x < gridSize && z >= 0 && z < gridSize &&
+               !checkCollision(worldX(x), worldZ(z));
+    };
+
+    if (!walkable(sx, sz) || !walkable(tx, tz)) return false;
+
+    visited[nodeId(sx, sz)] = 1;
+    queue.push_back(nodeId(sx, sz));
+
+    const int dirs[4][2] = {{1,0}, {-1,0}, {0,1}, {0,-1}};
+    for (size_t head = 0; head < queue.size(); head++) {
+        int id = queue[head];
+        int x = id % gridSize;
+        int z = id / gridSize;
+
+        if (x == tx && z == tz) return true;
+
+        for (int i = 0; i < 4; i++) {
+            int nx = x + dirs[i][0];
+            int nz = z + dirs[i][1];
+            if (!walkable(nx, nz)) continue;
+
+            int nid = nodeId(nx, nz);
+            if (visited[nid]) continue;
+
+            visited[nid] = 1;
+            queue.push_back(nid);
+        }
+    }
+
+    return false;
+}
+
+bool tryMoveEnemy(Enemy &e, float stepX, float stepZ) {
+    float candX = e.x + stepX;
+    float candZ = e.z + stepZ;
+
+    if (!checkEnemyCollision(candX, candZ)) {
+        e.x = candX;
+        e.z = candZ;
+        return true;
+    }
+
+    // Kalau diagonal/arah penuh kena tembok, coba geser per sumbu.
+    if (!checkEnemyCollision(e.x + stepX, e.z)) {
+        e.x += stepX;
+        return true;
+    }
+
+    if (!checkEnemyCollision(e.x, e.z + stepZ)) {
+        e.z += stepZ;
+        return true;
+    }
+
+    // Coba langkah lebih kecil, berguna saat hampir menyentuh sudut.
+    const float fractions[5] = {0.75f, 0.5f, 0.35f, 0.2f, 0.1f};
+    for (int k = 0; k < 5; k++) {
+        float smallX = e.x + stepX * fractions[k];
+        float smallZ = e.z + stepZ * fractions[k];
+        if (!checkEnemyCollision(smallX, smallZ)) {
+            e.x = smallX;
+            e.z = smallZ;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool enemyPathClear(float startX, float startZ, float targetX, float targetZ) {
+    float dx = targetX - startX;
+    float dz = targetZ - startZ;
+    float dist = sqrtf(dx * dx + dz * dz);
+    if (dist < 0.001f) return true;
+
+    int steps = (int)(dist / 0.12f) + 1;
+    for (int i = 1; i <= steps; i++) {
+        float t = (float)i / (float)steps;
+        float x = startX + dx * t;
+        float z = startZ + dz * t;
+        if (checkEnemyCollision(x, z)) return false;
+    }
+    return true;
+}
+
+int findReachableEnemyWaypoint(Enemy &e) {
+    for (int offset = 1; offset <= e.wpCount; offset++) {
+        int idx = (e.waypointIdx + offset) % e.wpCount;
+        if (enemyPathClear(e.x, e.z, e.wpX[idx], e.wpZ[idx])) {
+            return idx;
+        }
+    }
+    return -1;
+}
+
+// ===================================================
 // ENEMY UPDATE — pola sederhana dari kode kedua
 // (langsung += per frame, bukan dt-based)
 // ===================================================
 void updateEnemies(float dt) {
+    (void)dt;
+
     for (int i = 0; i < 5; i++) {
         Enemy &e = enemies[i];
 
         int next = (e.waypointIdx + 1) % e.wpCount;
+        if (!enemyPathClear(e.x, e.z, e.wpX[next], e.wpZ[next])) {
+            int reachable = findReachableEnemyWaypoint(e);
+            if (reachable < 0) continue;
+            next = reachable;
+        }
+
         float tx = e.wpX[next];
         float tz = e.wpZ[next];
 
@@ -297,15 +478,28 @@ void updateEnemies(float dt) {
         // Sudah sampai waypoint → pindah ke berikutnya
         if (dist < 0.15f) {
             e.waypointIdx = next;
+            e.stuckFrames = 0;
             continue;
         }
 
         // Kecepatan: saat lights on 2x lebih cepat (sama seperti kode kedua)
         float moveSpeed = e.speed * (lightsOn ? 2.0f : 1.0f);
 
-        // Gerak langsung per frame (pola kode kedua)
-        e.x += (dx / dist) * moveSpeed;
-        e.z += (dz / dist) * moveSpeed;
+        // Arah gerak (normalisasi)
+        float stepX = (dx / dist) * moveSpeed;
+        float stepZ = (dz / dist) * moveSpeed;
+
+        if (tryMoveEnemy(e, stepX, stepZ)) {
+            e.stuckFrames = 0;
+        } else {
+            e.stuckFrames++;
+            if (e.stuckFrames > 12) {
+                int reachable = findReachableEnemyWaypoint(e);
+                if (reachable >= 0) e.waypointIdx = (reachable + e.wpCount - 1) % e.wpCount;
+                e.stuckFrames = 0;
+            }
+        }
+
         e.angle = atan2f(dx, dz) * 180.0f / (float)M_PI;
 
         // Cek tabrakan dengan player
@@ -366,9 +560,17 @@ void update(int value) {
 
         updateAtmosphere(dt);
         updateLights(dt);
-        if (gameState != STATE_PLAYING) { glutPostRedisplay(); return; }
+        if (gameState != STATE_PLAYING) {
+            glutPostRedisplay();
+            glutTimerFunc(16, update, 0);
+            return;
+        }
         updateEnemies(dt);
-        if (gameState != STATE_PLAYING) { glutPostRedisplay(); return; }
+        if (gameState != STATE_PLAYING) {
+            glutPostRedisplay();
+            glutTimerFunc(16, update, 0);
+            return;
+        }
         checkTreasurePickup();
         checkExit();
     }
@@ -381,15 +583,31 @@ void update(int value) {
 // ===================================================
 void mouseMotion(int x, int y) {
     if (gameState != STATE_PLAYING) return;
-    int deltaX = x - lastMouseX;
-    lastMouseX = x;
+    (void)y;
+
+    if (ignoreNextMouseMove) {
+        ignoreNextMouseMove = false;
+        return;
+    }
+
+    int centerX = windowWidth / 2;
+    int centerY = windowHeight / 2;
+    int deltaX = x - centerX;
+
+    if (deltaX == 0) return;
+
     playerAngle += deltaX * mouseSensitivity;
     if (playerAngle >= 360.0f) playerAngle -= 360.0f;
     if (playerAngle <    0.0f) playerAngle += 360.0f;
+
+    ignoreNextMouseMove = true;
+    glutWarpPointer(centerX, centerY);
     glutPostRedisplay();
 }
 
 void movePlayer(float forward, float strafe) {
+    if (playerIsHiding) return;
+
     float rad = playerAngle * (float)M_PI / 180.0f;
     float newX = playerX + sinf(rad)*forward + cosf(rad)*strafe;
     float newZ = playerZ + cosf(rad)*forward - sinf(rad)*strafe;
@@ -664,12 +882,24 @@ void drawTextLarge(float x,float y,const char*t,float r,float g,float b) {
 
 void beginOrtho() {
     glDisable(GL_DEPTH_TEST);
+    glDisable(GL_FOG);
+    glDisable(GL_BLEND);
     glMatrixMode(GL_PROJECTION);glPushMatrix();glLoadIdentity();gluOrtho2D(0,800,0,600);
     glMatrixMode(GL_MODELVIEW);glPushMatrix();glLoadIdentity();
 }
 void endOrtho() {
     glPopMatrix();glMatrixMode(GL_PROJECTION);glPopMatrix();
     glMatrixMode(GL_MODELVIEW);glEnable(GL_DEPTH_TEST);
+}
+
+void prepareStaticScreen(float r, float g, float b) {
+    glDisable(GL_FOG);
+    glDisable(GL_BLEND);
+    glDisable(GL_DEPTH_TEST);
+    glClearColor(r, g, b, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
 }
 
 void drawGPSArrow(float cx,float cy,float tx,float tz,float r,float g,float b) {
@@ -728,6 +958,7 @@ void drawGPS() {
 }
 
 void drawMenu() {
+    prepareStaticScreen(0.03f,0.03f,0.06f);
     beginOrtho();
     glColor3f(0.03f,0.03f,0.06f);glBegin(GL_QUADS);glVertex2f(0,0);glVertex2f(800,0);glVertex2f(800,600);glVertex2f(0,600);glEnd();
     float t=(float)glutGet(GLUT_ELAPSED_TIME)/1000.0f;
@@ -751,6 +982,7 @@ void drawMenu() {
 }
 
 void drawGameOver() {
+    prepareStaticScreen(0.04f,0,0);
     beginOrtho();
     glColor3f(0.04f,0,0);glBegin(GL_QUADS);glVertex2f(0,0);glVertex2f(800,0);glVertex2f(800,600);glVertex2f(0,600);glEnd();
     float t=(float)glutGet(GLUT_ELAPSED_TIME)/1000.0f;
@@ -769,10 +1001,11 @@ void drawGameOver() {
 }
 
 void drawWin() {
+    prepareStaticScreen(0,0.04f,0.02f);
     beginOrtho();
     glColor3f(0,0.04f,0.02f);glBegin(GL_QUADS);glVertex2f(0,0);glVertex2f(800,0);glVertex2f(800,600);glVertex2f(0,600);glEnd();
     if(wonWithTreasure){
-        drawTextLarge(165,420,"YOU ESCAPED WITH TREASURE!",1,0.85f,0);
+        drawTextLarge(165,420,"YOU ESCAPED WITH TREASURE!",0.3f,1,0.45f);
         char buf[64];sprintf(buf,"FINAL SCORE: %d",finalScore);
         drawTextLarge(255,355,buf,0.3f,1,0.3f);
     } else {
@@ -785,7 +1018,6 @@ void drawWin() {
 }
 
 void display() {
-    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
     glLoadIdentity();
     if(gameState==STATE_MENU)    {drawMenu();    glutSwapBuffers();return;}
     if(gameState==STATE_GAMEOVER){drawGameOver();glutSwapBuffers();return;}
@@ -808,7 +1040,11 @@ void display() {
 }
 
 void reshape(int w,int h) {
-    if(!h)h=1;glViewport(0,0,w,h);
+    if(!h)h=1;
+    windowWidth = w;
+    windowHeight = h;
+    lastMouseX = w / 2;
+    glViewport(0,0,w,h);
     glMatrixMode(GL_PROJECTION);glLoadIdentity();gluPerspective(65.0,(double)w/h,0.3,200.0);
     glMatrixMode(GL_MODELVIEW);
 }
@@ -827,6 +1063,8 @@ int main(int argc,char**argv) {
     glutDisplayFunc(display);glutReshapeFunc(reshape);
     glutKeyboardFunc(keyboard);glutSpecialFunc(specialKeys);
     glutPassiveMotionFunc(mouseMotion);
+    glutSetCursor(GLUT_CURSOR_NONE);
+    glutWarpPointer(windowWidth / 2, windowHeight / 2);
     glutTimerFunc(16,update,0);
     glutMainLoop();
     return 0;
