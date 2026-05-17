@@ -1,3 +1,8 @@
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 #include <GL/glut.h>
 #include <cmath>
 #include <cstdio>
@@ -21,9 +26,13 @@ GameState gameState = STATE_MENU;
 // ================= PLAYER =================
 float playerX = 0.0f, playerZ = 0.0f;
 float playerAngle = 0.0f;
-float speed = 0.25f;
+float speed = 3.2f; // units per second
+float runMultiplier = 1.8f;
+float slowMultiplier = 0.45f;
 bool playerHasTreasure = false;
 bool playerIsHiding = false;
+bool keyStates[256] = {false};
+bool specialKeyStates[256] = {false};
 
 // ================= CAMERA =================
 float eyeHeight = 1.5f;
@@ -128,6 +137,7 @@ bool wonWithTreasure = false;
 // ================= FORWARD DECLARATIONS =================
 bool checkCollision(float newX, float newZ);
 bool pathExists(float startX, float startZ, float targetX, float targetZ);
+void updatePlayerMovement(float dt);
 void resetGame();
 
 // ===================================================
@@ -230,6 +240,8 @@ void initEnemies() {
 // ===================================================
 void resetGame() {
     srand((unsigned)time(NULL));
+    memset(keyStates, 0, sizeof(keyStates));
+    memset(specialKeyStates, 0, sizeof(specialKeyStates));
     playerHasTreasure = false;
     playerIsHiding = false;
     lightsOn = false;
@@ -521,12 +533,6 @@ void updateLights(float dt) {
             lightsOn = true;
             lightsOnTimer = 0.0f;
             gameTimer = 0.0f;
-            if (!playerIsHiding) {
-                finalScore = 0;
-                wonWithTreasure = playerHasTreasure;
-                gameState = STATE_GAMEOVER;
-                return;
-            }
         }
     } else {
         lightsOnTimer += dt;
@@ -565,6 +571,7 @@ void update(int value) {
             glutTimerFunc(16, update, 0);
             return;
         }
+        updatePlayerMovement(dt);
         updateEnemies(dt);
         if (gameState != STATE_PLAYING) {
             glutPostRedisplay();
@@ -596,7 +603,7 @@ void mouseMotion(int x, int y) {
 
     if (deltaX == 0) return;
 
-    playerAngle += deltaX * mouseSensitivity;
+    playerAngle -= deltaX * mouseSensitivity;
     if (playerAngle >= 360.0f) playerAngle -= 360.0f;
     if (playerAngle <    0.0f) playerAngle += 360.0f;
 
@@ -614,6 +621,58 @@ void movePlayer(float forward, float strafe) {
     if (!checkCollision(newX, newZ)) { playerX = newX; playerZ = newZ; }
 }
 
+bool isShiftDown() {
+#ifdef _WIN32
+    return (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+#else
+    return false;
+#endif
+}
+
+bool isCtrlDown() {
+#ifdef _WIN32
+    return (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+#else
+    return false;
+#endif
+}
+
+int movementKeyIndex(unsigned char key) {
+    switch (key) {
+        case 'w': case 'W': case 23: return 'w'; // Ctrl+W
+        case 'a': case 'A': case 1:  return 'a'; // Ctrl+A
+        case 's': case 'S': case 19: return 's'; // Ctrl+S
+        case 'd': case 'D': case 4:  return 'd'; // Ctrl+D
+    }
+    return 0;
+}
+
+void updatePlayerMovement(float dt) {
+    if (playerIsHiding) return;
+
+    float forward = 0.0f;
+    float strafe = 0.0f;
+    float currentSpeed = speed;
+
+    if (isShiftDown()) currentSpeed *= runMultiplier;
+    if (isCtrlDown()) currentSpeed *= slowMultiplier;
+
+    if (keyStates['w'] || specialKeyStates[GLUT_KEY_UP]) forward += currentSpeed * dt;
+    if (keyStates['s'] || specialKeyStates[GLUT_KEY_DOWN]) forward -= currentSpeed * dt;
+    if (keyStates['a'] || specialKeyStates[GLUT_KEY_LEFT]) strafe += currentSpeed * dt;
+    if (keyStates['d'] || specialKeyStates[GLUT_KEY_RIGHT]) strafe -= currentSpeed * dt;
+
+    if (forward != 0.0f && strafe != 0.0f) {
+        const float diagonalFix = 0.70710678f;
+        forward *= diagonalFix;
+        strafe *= diagonalFix;
+    }
+
+    if (forward != 0.0f || strafe != 0.0f) {
+        movePlayer(forward, strafe);
+    }
+}
+
 void keyboard(unsigned char key, int x, int y) {
     if (gameState == STATE_MENU) {
         if (key == 13 || key == ' ') resetGame();
@@ -625,28 +684,44 @@ void keyboard(unsigned char key, int x, int y) {
         return;
     }
     switch (key) {
-        case 'w': case 'W': movePlayer( speed,  0); break;
-        case 's': case 'S': movePlayer(-speed,  0); break;
-        case 'd': case 'D': movePlayer(0, -speed); break;
-        case 'a': case 'A': movePlayer(0,  speed); break;
         case 'h': case 'H':
             if (isNearHidingSpot()) playerIsHiding = !playerIsHiding;
             else playerIsHiding = false;
             break;
         case 27: exit(0); break;
+        default: {
+            int moveKey = movementKeyIndex(key);
+            if (moveKey) keyStates[moveKey] = true;
+            break;
+        }
     }
     glutPostRedisplay();
+}
+
+void keyboardUp(unsigned char key, int x, int y) {
+    (void)x;
+    (void)y;
+    int moveKey = movementKeyIndex(key);
+    if (moveKey) keyStates[moveKey] = false;
 }
 
 void specialKeys(int key, int x, int y) {
     if (gameState != STATE_PLAYING) return;
     switch (key) {
-        case GLUT_KEY_UP:    movePlayer( speed, 0); break;
-        case GLUT_KEY_DOWN:  movePlayer(-speed, 0); break;
-        case GLUT_KEY_LEFT:  movePlayer(0,  speed); break;
-        case GLUT_KEY_RIGHT: movePlayer(0, -speed); break;
+        case GLUT_KEY_UP:
+        case GLUT_KEY_DOWN:
+        case GLUT_KEY_LEFT:
+        case GLUT_KEY_RIGHT:
+            specialKeyStates[key] = true;
+            break;
     }
     glutPostRedisplay();
+}
+
+void specialKeysUp(int key, int x, int y) {
+    (void)x;
+    (void)y;
+    if (key >= 0 && key < 256) specialKeyStates[key] = false;
 }
 
 // ===================================================
@@ -942,7 +1017,7 @@ void drawGPS() {
         glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
         glColor4f(1,0.85f,0,0.06f);glBegin(GL_QUADS);glVertex2f(0,0);glVertex2f(800,0);glVertex2f(800,600);glVertex2f(0,600);glEnd();
         glDisable(GL_BLEND);
-        if(!playerIsHiding)drawTextLarge(200,470,"!! LIGHTS ON - HIDE NOW !!",1,0.1f,0.1f);
+        if(!playerIsHiding)drawTextLarge(185,470,"!! LIGHTS ON - ENEMIES FASTER !!",1,0.1f,0.1f);
         else drawTextLarge(270,470,"STAY HIDDEN!",0.2f,1,0.2f);
     } else {
         glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
@@ -973,7 +1048,7 @@ void drawMenu() {
     drawText2D(180,302,"Green GPS box     : Arrow to Exit",0,1,0.3f);
     drawText2D(200,265,"--- RULES ---",0.6f,0.6f,1);
     drawText2D(180,242,"Every 60s lights come ON for 10s!",0.9f,0.25f,0.25f);
-    drawText2D(180,220,"Be inside a crate or GAME OVER!",0.9f,0.25f,0.25f);
+    drawText2D(180,220,"Lights make enemies faster. Hide to stay safe!",0.9f,0.25f,0.25f);
     drawText2D(180,198,"Avoid the humanoid enemies!",0.9f,0.4f,0.65f);
     drawText2D(180,176,"Exit with treasure = best score!",1,0.85f,0);
     float ba=0.5f+0.5f*sinf(t*2.5f);
@@ -1062,6 +1137,8 @@ int main(int argc,char**argv) {
     init();
     glutDisplayFunc(display);glutReshapeFunc(reshape);
     glutKeyboardFunc(keyboard);glutSpecialFunc(specialKeys);
+    glutKeyboardUpFunc(keyboardUp);glutSpecialUpFunc(specialKeysUp);
+    glutIgnoreKeyRepeat(1);
     glutPassiveMotionFunc(mouseMotion);
     glutSetCursor(GLUT_CURSOR_NONE);
     glutWarpPointer(windowWidth / 2, windowHeight / 2);
