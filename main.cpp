@@ -110,6 +110,9 @@ struct Enemy {
     float speed;       // units per frame (seperti kode kedua)
     int   waypointIdx;
     int   stuckFrames;
+    float targetX, targetZ;
+    std::vector<float> pathX, pathZ;
+    int pathIndex;
     float wpX[8], wpZ[8];
     int   wpCount;
 };
@@ -191,7 +194,8 @@ void initEnemies() {
 
     // ── Enemy 0: patrol top-left quadrant ──
     enemies[0].x = -12.5f; enemies[0].z = 12.4f;
-    enemies[0].angle = 0; enemies[0].speed = 0.05f; enemies[0].stuckFrames = 0;
+    enemies[0].angle = 0; enemies[0].speed = 0.0625f; enemies[0].stuckFrames = 0;
+    enemies[0].pathX.clear(); enemies[0].pathZ.clear(); enemies[0].pathIndex = 0;
     enemies[0].waypointIdx = 0; enemies[0].wpCount = 4;
     enemies[0].wpX[0]=-12.5f; enemies[0].wpZ[0]= 12.4f;
     enemies[0].wpX[1]=-11.0f; enemies[0].wpZ[1]= 12.4f;
@@ -200,7 +204,8 @@ void initEnemies() {
 
     // ── Enemy 1: patrol top-right quadrant ──
     enemies[1].x = 11.5f; enemies[1].z = 12.0f;
-    enemies[1].angle = 0; enemies[1].speed = 0.05f; enemies[1].stuckFrames = 0;
+    enemies[1].angle = 0; enemies[1].speed = 0.0625f; enemies[1].stuckFrames = 0;
+    enemies[1].pathX.clear(); enemies[1].pathZ.clear(); enemies[1].pathIndex = 0;
     enemies[1].waypointIdx = 0; enemies[1].wpCount = 4;
     enemies[1].wpX[0]= 11.5f; enemies[1].wpZ[0]= 12.0f;
     enemies[1].wpX[1]= 11.5f; enemies[1].wpZ[1]=  7.0f;
@@ -209,7 +214,8 @@ void initEnemies() {
 
     // ── Enemy 2: patrol center-left ──
     enemies[2].x = -12.5f; enemies[2].z = -5.5f;
-    enemies[2].angle = 0; enemies[2].speed = 0.05f; enemies[2].stuckFrames = 0;
+    enemies[2].angle = 0; enemies[2].speed = 0.0625f; enemies[2].stuckFrames = 0;
+    enemies[2].pathX.clear(); enemies[2].pathZ.clear(); enemies[2].pathIndex = 0;
     enemies[2].waypointIdx = 0; enemies[2].wpCount = 4;
     enemies[2].wpX[0]=-12.5f; enemies[2].wpZ[0]= -5.5f;
     enemies[2].wpX[1]=-12.5f; enemies[2].wpZ[1]= -8.8f;
@@ -218,7 +224,8 @@ void initEnemies() {
 
     // ── Enemy 3: patrol center ──
     enemies[3].x = 4.0f; enemies[3].z = -3.5f;
-    enemies[3].angle = 0; enemies[3].speed = 0.06f; enemies[3].stuckFrames = 0;
+    enemies[3].angle = 0; enemies[3].speed = 0.075f; enemies[3].stuckFrames = 0;
+    enemies[3].pathX.clear(); enemies[3].pathZ.clear(); enemies[3].pathIndex = 0;
     enemies[3].waypointIdx = 0; enemies[3].wpCount = 4;
     enemies[3].wpX[0]= 4.0f; enemies[3].wpZ[0]= -3.0f;
     enemies[3].wpX[1]= 8.5f; enemies[3].wpZ[1]= -3.0f;
@@ -227,7 +234,8 @@ void initEnemies() {
 
     // ── Enemy 4: patrol bottom-right ──
     enemies[4].x = 11.5f; enemies[4].z = -6.0f;
-    enemies[4].angle = 0; enemies[4].speed = 0.055f; enemies[4].stuckFrames = 0;
+    enemies[4].angle = 0; enemies[4].speed = 0.06875f; enemies[4].stuckFrames = 0;
+    enemies[4].pathX.clear(); enemies[4].pathZ.clear(); enemies[4].pathIndex = 0;
     enemies[4].waypointIdx = 0; enemies[4].wpCount = 4;
     enemies[4].wpX[0]= 11.5f; enemies[4].wpZ[0]= -6.0f;
     enemies[4].wpX[1]= 11.5f; enemies[4].wpZ[1]=-13.0f;
@@ -463,6 +471,100 @@ int findReachableEnemyWaypoint(Enemy &e) {
     return -1;
 }
 
+bool buildEnemyPath(Enemy &e, float targetX, float targetZ) {
+    const float gridStep = 0.5f;
+    const int gridSize = (int)((MAP_MAX - MAP_MIN) / gridStep) + 1;
+
+    auto toIndex = [&](float v) {
+        int idx = (int)roundf((v - MAP_MIN) / gridStep);
+        if (idx < 0) idx = 0;
+        if (idx >= gridSize) idx = gridSize - 1;
+        return idx;
+    };
+
+    auto nodeId = [&](int x, int z) { return z * gridSize + x; };
+    auto worldX = [&](int x) { return MAP_MIN + x * gridStep; };
+    auto worldZ = [&](int z) { return MAP_MIN + z * gridStep; };
+    auto walkable = [&](int x, int z) {
+        return x >= 0 && x < gridSize && z >= 0 && z < gridSize &&
+               !checkEnemyCollision(worldX(x), worldZ(z));
+    };
+
+    int sx = toIndex(e.x), sz = toIndex(e.z);
+    int tx = toIndex(targetX), tz = toIndex(targetZ);
+
+    if (!walkable(sx, sz) || !walkable(tx, tz)) return false;
+
+    std::vector<int> queue;
+    std::vector<int> prev(gridSize * gridSize, -1);
+    queue.reserve(gridSize * gridSize);
+
+    int start = nodeId(sx, sz);
+    int goal = nodeId(tx, tz);
+    prev[start] = start;
+    queue.push_back(start);
+
+    const int dirs[4][2] = {{1,0}, {-1,0}, {0,1}, {0,-1}};
+    for (size_t head = 0; head < queue.size(); head++) {
+        int id = queue[head];
+        if (id == goal) break;
+
+        int x = id % gridSize;
+        int z = id / gridSize;
+        for (int i = 0; i < 4; i++) {
+            int nx = x + dirs[i][0];
+            int nz = z + dirs[i][1];
+            if (!walkable(nx, nz)) continue;
+
+            int nid = nodeId(nx, nz);
+            if (prev[nid] != -1) continue;
+
+            prev[nid] = id;
+            queue.push_back(nid);
+        }
+    }
+
+    if (prev[goal] == -1) return false;
+
+    std::vector<int> reversed;
+    for (int at = goal; at != start; at = prev[at]) {
+        reversed.push_back(at);
+    }
+    std::reverse(reversed.begin(), reversed.end());
+
+    e.pathX.clear();
+    e.pathZ.clear();
+    for (size_t i = 0; i < reversed.size(); i++) {
+        int id = reversed[i];
+        int x = id % gridSize;
+        int z = id / gridSize;
+        e.pathX.push_back(worldX(x));
+        e.pathZ.push_back(worldZ(z));
+    }
+
+    e.targetX = targetX;
+    e.targetZ = targetZ;
+    e.pathIndex = 0;
+    return !e.pathX.empty();
+}
+
+bool chooseEnemyPatrolTarget(Enemy &e) {
+    for (int tries = 0; tries < 80; tries++) {
+        float tx, tz;
+        randomPos(tx, tz);
+
+        float dx = tx - e.x;
+        float dz = tz - e.z;
+        if (sqrtf(dx * dx + dz * dz) < 4.0f) continue;
+
+        if (!checkEnemyCollision(tx, tz) && buildEnemyPath(e, tx, tz)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // ===================================================
 // ENEMY UPDATE — pola sederhana dari kode kedua
 // (langsung += per frame, bukan dt-based)
@@ -473,24 +575,24 @@ void updateEnemies(float dt) {
     for (int i = 0; i < 5; i++) {
         Enemy &e = enemies[i];
 
-        int next = (e.waypointIdx + 1) % e.wpCount;
-        if (!enemyPathClear(e.x, e.z, e.wpX[next], e.wpZ[next])) {
-            int reachable = findReachableEnemyWaypoint(e);
-            if (reachable < 0) continue;
-            next = reachable;
+        if (e.pathIndex >= (int)e.pathX.size()) {
+            if (!chooseEnemyPatrolTarget(e)) continue;
         }
 
-        float tx = e.wpX[next];
-        float tz = e.wpZ[next];
+        float tx = e.pathX[e.pathIndex];
+        float tz = e.pathZ[e.pathIndex];
 
         float dx = tx - e.x;
         float dz = tz - e.z;
         float dist = sqrtf(dx*dx + dz*dz);
 
-        // Sudah sampai waypoint → pindah ke berikutnya
-        if (dist < 0.15f) {
-            e.waypointIdx = next;
+        // Sudah sampai node path, lanjut ke node berikutnya.
+        if (dist < 0.18f) {
+            e.pathIndex++;
             e.stuckFrames = 0;
+            if (e.pathIndex >= (int)e.pathX.size()) {
+                chooseEnemyPatrolTarget(e);
+            }
             continue;
         }
 
@@ -506,8 +608,9 @@ void updateEnemies(float dt) {
         } else {
             e.stuckFrames++;
             if (e.stuckFrames > 12) {
-                int reachable = findReachableEnemyWaypoint(e);
-                if (reachable >= 0) e.waypointIdx = (reachable + e.wpCount - 1) % e.wpCount;
+                if (!buildEnemyPath(e, e.targetX, e.targetZ)) {
+                    chooseEnemyPatrolTarget(e);
+                }
                 e.stuckFrames = 0;
             }
         }
