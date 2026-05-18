@@ -1044,10 +1044,10 @@ void drawMaze() {
 void drawExit() {
     const float frameX  = 14.0f;
     const float doorZ   = exitZ;       // -10.0f
-    const float doorW   = 1.0f;        // setengah lebar bukaan
+    const float doorW   = 1.06f;        // setengah lebar bukaan
     const float doorH   = 3.4f;
     const float depth   = 0.22f;
-    const float doorShift = 0.45f;      // geser pintu ke kanan (+Z)
+    const float doorShift = 0.485f;      // geser pintu ke kanan (+Z)
     const float fLeft   = doorZ - doorW + doorShift;
     const float fRight  = doorZ + doorW + doorShift;
 
