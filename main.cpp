@@ -585,9 +585,16 @@ void updateEnemies(float dt) {
 
         float stepX = (dx / dist) * moveSpeed;
         float stepZ = (dz / dist) * moveSpeed;
+        float oldX = e.x;
+        float oldZ = e.z;
 
         if (tryMoveEnemy(e, stepX, stepZ)) {
             e.stuckFrames = 0;
+            float movedX = e.x - oldX;
+            float movedZ = e.z - oldZ;
+            if (movedX * movedX + movedZ * movedZ > 0.0001f) {
+                e.angle = atan2f(movedX, movedZ) * 180.0f / (float)M_PI;
+            }
         } else {
             e.stuckFrames++;
             if (e.stuckFrames > 12) {
@@ -597,8 +604,6 @@ void updateEnemies(float dt) {
                 e.stuckFrames = 0;
             }
         }
-
-        e.angle = atan2f(dx, dz) * 180.0f / (float)M_PI;
 
         float pdx = e.x - playerX, pdz = e.z - playerZ;
         if (sqrtf(pdx*pdx + pdz*pdz) < 0.85f && !playerIsHiding) {
@@ -1098,7 +1103,7 @@ void drawEnemyBody(int i) {
     float bob=sinf(t*3+i*1.5f)*0.05f;
     glPushMatrix();
     glTranslatef(e.x,bob,e.z);
-    glRotatef(-e.angle+180.0f,0,1,0);
+    glRotatef(e.angle+180.0f,0,1,0);
 
     if(lightsOn)glColor3f(0.7f,0.1f,0.35f);else glColor3f(0.5f,0.05f,0.25f);
     glPushMatrix();glTranslatef(0,1.1f,0);glScalef(0.55f,0.7f,0.35f);glutSolidCube(1);glPopMatrix();
