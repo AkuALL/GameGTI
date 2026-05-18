@@ -128,7 +128,7 @@ Enemy enemies[5];
 
 // ================= LIGHT CYCLE =================
 float gameTimer = 0.0f;
-float lightCycleInterval = 60.0f;
+float lightCycleInterval = 40.0f;
 float lightOnDuration = 10.0f;
 bool lightsOn = false;
 float lightsOnTimer = 0.0f;
@@ -1235,7 +1235,7 @@ void drawMenu() {
     drawText2D(180,324,"Gold GPS box      : Arrow to Treasure",1,0.85f,0);
     drawText2D(180,302,"Green GPS box     : Arrow to Exit",0,1,0.3f);
     drawText2D(200,265,"--- RULES ---",0.6f,0.6f,1);
-    drawText2D(180,242,"Every 60s lights come ON for 10s!",0.9f,0.25f,0.25f);
+    drawText2D(180,242,"Every 40s lights come ON for 10s!",0.9f,0.25f,0.25f);
     drawText2D(180,220,"Lights make enemies faster. Hide to stay safe!",0.9f,0.25f,0.25f);
     drawText2D(180,198,"Avoid the humanoid enemies!",0.9f,0.4f,0.65f);
     drawText2D(180,176,"Exit with treasure = best score!",1,0.85f,0);
