@@ -89,6 +89,11 @@ int wallCount = 23;
 // ================= EXIT =================
 float exitX = 14.5f, exitZ = -10.0f;
 
+// ================= DOOR STATE (tambah di global vars) =================
+float doorAngle = 0.0f;
+float doorOpenSpeed = 80.0f;
+bool doorShouldOpen = false;
+
 // ================= TREASURE =================
 float treasureX, treasureZ;
 
@@ -613,6 +618,15 @@ void updateEnemies(float dt) {
     }
 }
 
+
+void updateDoor(float dt) {
+    float dx = playerX - exitX;
+    float dz = playerZ - exitZ;
+    doorShouldOpen = (sqrtf(dx*dx + dz*dz) < 4.0f);
+    if (doorShouldOpen) { doorAngle += doorOpenSpeed * dt; if (doorAngle > 90.0f) doorAngle = 90.0f; }
+    else                { doorAngle -= doorOpenSpeed * dt; if (doorAngle < 0.0f)  doorAngle = 0.0f;  }
+}
+
 // ===================================================
 // LIGHT CYCLE & ATMOSPHERE
 // ===================================================
@@ -668,6 +682,7 @@ void update(int value) {
             glutTimerFunc(16, update, 0);
             return;
         }
+        updateDoor(dt); 
         checkTreasurePickup();
         checkExit();
     }
@@ -1027,18 +1042,177 @@ void drawMaze() {
 }
 
 void drawExit() {
-    float t=(float)glutGet(GLUT_ELAPSED_TIME)/800.0f;
-    float pulse=0.6f+0.4f*sinf(t*3.0f);
-    glPushMatrix();glTranslatef(13.5f,0.05f,exitZ);
-    glColor3f(0,pulse,0.2f*pulse);
+    const float frameX  = 14.0f;
+    const float doorZ   = exitZ;       // -10.0f
+    const float doorW   = 1.0f;        // setengah lebar bukaan
+    const float doorH   = 3.4f;
+    const float depth   = 0.22f;
+    const float doorShift = 0.45f;      // geser pintu ke kanan (+Z)
+    const float fLeft   = doorZ - doorW + doorShift;
+    const float fRight  = doorZ + doorW + doorShift;
+
+    float t     = (float)glutGet(GLUT_ELAPSED_TIME) / 800.0f;
+    float pulse = 0.55f + 0.45f * sinf(t * 2.5f);
+
+    // ── helper warna ──
+    auto stoneCol = [&](float b) {
+        if (lightsOn) glColor3f(b*0.62f, b*0.60f, b*0.55f);
+        else glColor3f(b*0.22f*flickerIntensity, b*0.20f*flickerIntensity, b*0.18f*flickerIntensity);
+    };
+    auto brassCol = [&](float b) {
+        // Ornamen coklat tua / gelap
+        if (lightsOn) glColor3f(b*0.38f, b*0.22f, b*0.10f);
+        else glColor3f(b*0.16f*flickerIntensity, b*0.09f*flickerIntensity, b*0.04f*flickerIntensity);
+    };
+
+    auto woodCol = [&](float b) {
+        // Kayu coklat hangat
+        if (lightsOn) glColor3f(b*0.45f, b*0.28f, b*0.12f);
+        else glColor3f(b*0.20f*flickerIntensity, b*0.12f*flickerIntensity, b*0.05f*flickerIntensity);
+    };
+
+    // ==============================================
+    // 1. LANTAI GLOW HIJAU
+    // ==============================================
+    glPushMatrix();
+    glTranslatef(13.5f, 0.02f, doorZ);
+    glColor3f(0, pulse*0.7f, pulse*0.3f);
     glBegin(GL_QUADS);
-    glVertex3f(-0.5f,0,-2);glVertex3f(0.5f,0,-2);glVertex3f(0.5f,0,2);glVertex3f(-0.5f,0,2);
+    glVertex3f(-0.3f,0,-doorW); glVertex3f(0.3f,0,-doorW);
+    glVertex3f(0.3f, 0, doorW); glVertex3f(-0.3f,0, doorW);
     glEnd();
-    glColor3f(0,pulse*0.8f,0);
-    glPushMatrix();glTranslatef(0.6f,1.75f,0);glScalef(0.2f,3.5f,4);glutSolidCube(1);glPopMatrix();
+    glPopMatrix();
+
+    // ==============================================
+    // 2. PILAR BATU KIRI & KANAN
+    // ==============================================
+    const float pilW  = 0.42f;  // lebar pilar
+    const float pilD  = 0.38f;  // kedalaman pilar
+
+    for (int side = 0; side < 2; side++) {
+        float pz = (side == 0) ? fLeft - pilW*0.5f : fRight + pilW*0.5f;
+        int blocks = 6;
+        float bh = doorH / blocks;
+
+        for (int b = 0; b < blocks; b++) {
+            float bv  = (b % 2 == 0) ? 0.78f : 0.62f;
+            float by0 = b * bh;
+            float by1 = (b+1) * bh;
+
+            stoneCol(bv);
+            // Muka depan pilar
+            glBegin(GL_QUADS);
+            glVertex3f(frameX,        by0, pz - pilW*0.5f);
+            glVertex3f(frameX,        by1, pz - pilW*0.5f);
+            glVertex3f(frameX,        by1, pz + pilW*0.5f);
+            glVertex3f(frameX,        by0, pz + pilW*0.5f);
+            glEnd();
+            // Sisi luar pilar
+            stoneCol(bv * 0.75f);
+            glBegin(GL_QUADS);
+            glVertex3f(frameX,        by0, pz + (side==0?-1:1)*pilW*0.5f);
+            glVertex3f(frameX-pilD,   by0, pz + (side==0?-1:1)*pilW*0.5f);
+            glVertex3f(frameX-pilD,   by1, pz + (side==0?-1:1)*pilW*0.5f);
+            glVertex3f(frameX,        by1, pz + (side==0?-1:1)*pilW*0.5f);
+            glEnd();
+            // Garis mortar
+            glColor3f(0.08f,0.07f,0.06f);
+            glLineWidth(1.2f);
+            glBegin(GL_LINE_LOOP);
+            glVertex3f(frameX, by0, pz-pilW*0.5f);
+            glVertex3f(frameX, by1, pz-pilW*0.5f);
+            glVertex3f(frameX, by1, pz+pilW*0.5f);
+            glVertex3f(frameX, by0, pz+pilW*0.5f);
+            glEnd();
+        }
+
+        // Kepala pilar (capital) — blok lebih lebar
+        stoneCol(0.90f);
+        float capY0 = doorH - 0.05f;
+        float capY1 = doorH + 0.22f;
+        float capExtra = 0.10f;
+        glBegin(GL_QUADS);
+        glVertex3f(frameX+0.04f,  capY0, pz - pilW*0.5f - capExtra);
+        glVertex3f(frameX+0.04f,  capY1, pz - pilW*0.5f - capExtra);
+        glVertex3f(frameX+0.04f,  capY1, pz + pilW*0.5f + capExtra);
+        glVertex3f(frameX+0.04f,  capY0, pz + pilW*0.5f + capExtra);
+        glEnd();
+    }
+
+    // ==============================================
+    // 5. DAUN PINTU TUNGGAL (berengsel di kiri = fLeft)
+    // ==============================================
+    glPushMatrix();
+    glTranslatef(frameX + 0.01f, 0.0f, fLeft);
+    glRotatef(doorAngle, 0, 1, 0);   // buka ke dalam (negatif Z)
+
+    const float leafW = doorW * 2.0f;  // lebar penuh
+    const float leafD = 0.09f;
+
+    // ── Body kayu (papan vertikal) ──
+    const int boards = 5;
+    float boardW = leafW / boards;
+
+    for (int b = 0; b < boards; b++) {
+        float bz0 = b * boardW;
+        float bz1 = (b+1) * boardW - 0.025f; // celah antar papan
+        float bv  = (b % 2 == 0) ? 1.0f : 0.82f;
+
+        woodCol(bv);
+        glBegin(GL_QUADS);
+        // Muka depan
+        glVertex3f(0,      0,    bz0); glVertex3f(0,     doorH, bz0);
+        glVertex3f(0,      doorH,bz1); glVertex3f(0,     0,     bz1);
+        // Belakang
+        glVertex3f(-leafD, 0,    bz0); glVertex3f(-leafD,0,     bz1);
+        glVertex3f(-leafD, doorH,bz1); glVertex3f(-leafD,doorH, bz0);
+        // Sisi kecil papan
+        woodCol(bv * 0.70f);
+        glVertex3f(0, 0, bz1); glVertex3f(-leafD,0,bz1);
+        glVertex3f(-leafD,doorH,bz1); glVertex3f(0,doorH,bz1);
+        glEnd();
+    }
+
+    // ── 3 STRIP BESI HORIZONTAL ──
+    float stripY[3] = { doorH*0.18f, doorH*0.50f, doorH*0.80f };
+    for (int i = 0; i < 3; i++) {
+        // Strip utama
+        brassCol(1.0f);
+        glPushMatrix();
+        glTranslatef(-leafD*0.5f, stripY[i], leafW*0.5f);
+        glScalef(leafD + 0.04f, 0.11f, leafW * 0.96f);
+        glutSolidCube(1);
+        glPopMatrix();
+
+        // Paku/rivet di kiri-tengah-kanan
+        float rivZ[3] = { leafW*0.15f, leafW*0.50f, leafW*0.85f };
+        for (int r = 0; r < 3; r++) {
+            glColor3f(0.75f, 0.60f, 0.20f);
+            glPushMatrix();
+            glTranslatef(0.04f, stripY[i], rivZ[r]);
+            glutSolidSphere(0.038f, 7, 7);
+            glPopMatrix();
+        }
+    }
+
+    // ── ORNAMEN TENGAH (lingkaran brass) ──
+    brassCol(1.0f);
+    glPushMatrix();
+    glTranslatef(0.05f, doorH * 0.50f, leafW * 0.50f);
+    glutSolidSphere(0.13f, 12, 12);
+    glPopMatrix();
+
+    // ── HANDLE / RING ──
+    glColor3f(0.80f, 0.65f, 0.22f);
+    glPushMatrix();
+    glTranslatef(-leafD - 0.06f, doorH * 0.46f, leafW * 0.85f);
+    glutSolidTorus(0.025f, 0.10f, 8, 14);
+    glPopMatrix();
+
+    glPopMatrix(); // end door leaf
+
     glPopMatrix();
 }
-
 void drawHidingSpots() {
     float t=(float)glutGet(GLUT_ELAPSED_TIME)/1000.0f;
     for (int i=0;i<hidingCount;i++) {
