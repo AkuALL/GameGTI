@@ -12,6 +12,10 @@
 #include <vector>
 #include <algorithm>
 
+// Mengimpor library pembaca gambar sesuai modul praktikum
+#include "imageloader.h"
+#include "imageloader.cpp"
+
 // ================= CONSTANTS =================
 #define MAP_MIN -14.0f
 #define MAP_MAX  14.0f
@@ -43,6 +47,9 @@ int lastMouseX = 400;
 float mouseSensitivity = 0.2f;
 int windowWidth = 800, windowHeight = 600;
 bool ignoreNextMouseMove = false;
+
+// ================= TEXTURE ID =================
+GLuint wallTextureId; 
 
 // ================= WALLS =================
 struct Wall { float x, z, sx, sz; };
@@ -107,7 +114,7 @@ int hidingCount = 12;
 struct Enemy {
     float x, z;
     float angle;
-    float speed;       // units per frame (seperti kode kedua)
+    float speed;       
     int   waypointIdx;
     int   stuckFrames;
     float targetX, targetZ;
@@ -121,7 +128,7 @@ Enemy enemies[5];
 
 // ================= LIGHT CYCLE =================
 float gameTimer = 0.0f;
-float lightCycleInterval = 30.0f;
+float lightCycleInterval = 60.0f;
 float lightOnDuration = 10.0f;
 bool lightsOn = false;
 float lightsOnTimer = 0.0f;
@@ -190,9 +197,6 @@ bool checkCollision(float newX, float newZ) {
 // ENEMY INIT
 // ===================================================
 void initEnemies() {
-    // speed = units per frame (sama seperti kode kedua: 0.05f normal)
-
-    // ── Enemy 0: patrol top-left quadrant ──
     enemies[0].x = -12.5f; enemies[0].z = 12.4f;
     enemies[0].angle = 0; enemies[0].speed = 0.0625f; enemies[0].stuckFrames = 0;
     enemies[0].pathX.clear(); enemies[0].pathZ.clear(); enemies[0].pathIndex = 0;
@@ -202,7 +206,6 @@ void initEnemies() {
     enemies[0].wpX[2]=-11.0f; enemies[0].wpZ[2]= 10.7f;
     enemies[0].wpX[3]=-12.5f; enemies[0].wpZ[3]= 10.7f;
 
-    // ── Enemy 1: patrol top-right quadrant ──
     enemies[1].x = 11.5f; enemies[1].z = 12.0f;
     enemies[1].angle = 0; enemies[1].speed = 0.0625f; enemies[1].stuckFrames = 0;
     enemies[1].pathX.clear(); enemies[1].pathZ.clear(); enemies[1].pathIndex = 0;
@@ -212,7 +215,6 @@ void initEnemies() {
     enemies[1].wpX[2]= 12.8f; enemies[1].wpZ[2]=  7.0f;
     enemies[1].wpX[3]= 12.8f; enemies[1].wpZ[3]= 12.0f;
 
-    // ── Enemy 2: patrol center-left ──
     enemies[2].x = -12.5f; enemies[2].z = -5.5f;
     enemies[2].angle = 0; enemies[2].speed = 0.0625f; enemies[2].stuckFrames = 0;
     enemies[2].pathX.clear(); enemies[2].pathZ.clear(); enemies[2].pathIndex = 0;
@@ -222,7 +224,6 @@ void initEnemies() {
     enemies[2].wpX[2]=-11.0f; enemies[2].wpZ[2]= -8.8f;
     enemies[2].wpX[3]=-11.0f; enemies[2].wpZ[3]= -5.5f;
 
-    // ── Enemy 3: patrol center ──
     enemies[3].x = 4.0f; enemies[3].z = -3.5f;
     enemies[3].angle = 0; enemies[3].speed = 0.075f; enemies[3].stuckFrames = 0;
     enemies[3].pathX.clear(); enemies[3].pathZ.clear(); enemies[3].pathIndex = 0;
@@ -232,7 +233,6 @@ void initEnemies() {
     enemies[3].wpX[2]= 8.5f; enemies[3].wpZ[2]= -5.5f;
     enemies[3].wpX[3]= 4.0f; enemies[3].wpZ[3]= -5.5f;
 
-    // ── Enemy 4: patrol bottom-right ──
     enemies[4].x = 11.5f; enemies[4].z = -6.0f;
     enemies[4].angle = 0; enemies[4].speed = 0.06875f; enemies[4].stuckFrames = 0;
     enemies[4].pathX.clear(); enemies[4].pathZ.clear(); enemies[4].pathIndex = 0;
@@ -241,6 +241,14 @@ void initEnemies() {
     enemies[4].wpX[1]= 11.5f; enemies[4].wpZ[1]=-13.0f;
     enemies[4].wpX[2]=  8.5f; enemies[4].wpZ[2]=-13.0f;
     enemies[4].wpX[3]=  8.5f; enemies[4].wpZ[3]= -6.0f;
+}
+
+GLuint loadTexture(Image* image) {
+    GLuint textureId;
+    glGenTextures(1, &textureId);
+    glBindTexture(GL_TEXTURE_2D, textureId);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image->width, image->height, 0, GL_RGB, GL_UNSIGNED_BYTE, image->pixels);
+    return textureId;
 }
 
 // ===================================================
@@ -328,18 +336,15 @@ void checkExit() {
 }
 
 // ===================================================
-// ENEMY COLLISION (biar enemy tidak tembus tembok)
+// ENEMY COLLISION
 // ===================================================
 bool checkEnemyCollision(float newX, float newZ) {
-    // Radius collision dibuat kecil dan bulat supaya enemy tidak mudah nyangkut di sudut tembok.
     const float enemyRadius = 0.18f;
 
-    // batas map
     if (newX < MAP_MIN + enemyRadius || newX > MAP_MAX - enemyRadius ||
         newZ < MAP_MIN + enemyRadius || newZ > MAP_MAX - enemyRadius)
         return true;
 
-    // Circle vs rectangle: lebih toleran daripada AABB-vs-AABB untuk gerakan musuh.
     for (int i = 0; i < wallCount; i++) {
         float wx = walls[i].x, wz = walls[i].z;
         float halfX = walls[i].sx / 2.0f, halfZ = walls[i].sz / 2.0f;
@@ -419,7 +424,6 @@ bool tryMoveEnemy(Enemy &e, float stepX, float stepZ) {
         return true;
     }
 
-    // Kalau diagonal/arah penuh kena tembok, coba geser per sumbu.
     if (!checkEnemyCollision(e.x + stepX, e.z)) {
         e.x += stepX;
         return true;
@@ -430,7 +434,6 @@ bool tryMoveEnemy(Enemy &e, float stepX, float stepZ) {
         return true;
     }
 
-    // Coba langkah lebih kecil, berguna saat hampir menyentuh sudut.
     const float fractions[5] = {0.75f, 0.5f, 0.35f, 0.2f, 0.1f};
     for (int k = 0; k < 5; k++) {
         float smallX = e.x + stepX * fractions[k];
@@ -459,16 +462,6 @@ bool enemyPathClear(float startX, float startZ, float targetX, float targetZ) {
         if (checkEnemyCollision(x, z)) return false;
     }
     return true;
-}
-
-int findReachableEnemyWaypoint(Enemy &e) {
-    for (int offset = 1; offset <= e.wpCount; offset++) {
-        int idx = (e.waypointIdx + offset) % e.wpCount;
-        if (enemyPathClear(e.x, e.z, e.wpX[idx], e.wpZ[idx])) {
-            return idx;
-        }
-    }
-    return -1;
 }
 
 bool buildEnemyPath(Enemy &e, float targetX, float targetZ) {
@@ -561,17 +554,10 @@ bool chooseEnemyPatrolTarget(Enemy &e) {
             return true;
         }
     }
-
     return false;
 }
 
-// ===================================================
-// ENEMY UPDATE — pola sederhana dari kode kedua
-// (langsung += per frame, bukan dt-based)
-// ===================================================
 void updateEnemies(float dt) {
-    (void)dt;
-
     for (int i = 0; i < 5; i++) {
         Enemy &e = enemies[i];
 
@@ -586,7 +572,6 @@ void updateEnemies(float dt) {
         float dz = tz - e.z;
         float dist = sqrtf(dx*dx + dz*dz);
 
-        // Sudah sampai node path, lanjut ke node berikutnya.
         if (dist < 0.18f) {
             e.pathIndex++;
             e.stuckFrames = 0;
@@ -596,10 +581,8 @@ void updateEnemies(float dt) {
             continue;
         }
 
-        // Kecepatan: saat lights on 2x lebih cepat (sama seperti kode kedua)
-        float moveSpeed = e.speed * (lightsOn ? 2.0f : 1.0f);
+        float moveSpeed = e.speed * (lightsOn ? 2.0f : 1.0f) * dt * 60.0f;
 
-        // Arah gerak (normalisasi)
         float stepX = (dx / dist) * moveSpeed;
         float stepZ = (dz / dist) * moveSpeed;
 
@@ -617,7 +600,6 @@ void updateEnemies(float dt) {
 
         e.angle = atan2f(dx, dz) * 180.0f / (float)M_PI;
 
-        // Cek tabrakan dengan player
         float pdx = e.x - playerX, pdz = e.z - playerZ;
         if (sqrtf(pdx*pdx + pdz*pdz) < 0.85f && !playerIsHiding) {
             finalScore = 0; wonWithTreasure = false;
@@ -627,7 +609,7 @@ void updateEnemies(float dt) {
 }
 
 // ===================================================
-// LIGHT CYCLE
+// LIGHT CYCLE & ATMOSPHERE
 // ===================================================
 void updateLights(float dt) {
     if (!lightsOn) {
@@ -689,7 +671,7 @@ void update(int value) {
 }
 
 // ===================================================
-// INPUT
+// INPUT SYSTEMS
 // ===================================================
 void mouseMotion(int x, int y) {
     if (gameState != STATE_PLAYING) return;
@@ -742,10 +724,10 @@ bool isCtrlDown() {
 
 int movementKeyIndex(unsigned char key) {
     switch (key) {
-        case 'w': case 'W': case 23: return 'w'; // Ctrl+W
-        case 'a': case 'A': case 1:  return 'a'; // Ctrl+A
-        case 's': case 'S': case 19: return 's'; // Ctrl+S
-        case 'd': case 'D': case 4:  return 'd'; // Ctrl+D
+        case 'w': case 'W': case 23: return 'w';
+        case 'a': case 'A': case 1:  return 'a';
+        case 's': case 'S': case 19: return 's';
+        case 'd': case 'D': case 4:  return 'd';
     }
     return 0;
 }
@@ -802,8 +784,7 @@ void keyboard(unsigned char key, int x, int y) {
 }
 
 void keyboardUp(unsigned char key, int x, int y) {
-    (void)x;
-    (void)y;
+    (void)x; (void)y;
     int moveKey = movementKeyIndex(key);
     if (moveKey) keyStates[moveKey] = false;
 }
@@ -822,13 +803,12 @@ void specialKeys(int key, int x, int y) {
 }
 
 void specialKeysUp(int key, int x, int y) {
-    (void)x;
-    (void)y;
+    (void)x; (void)y;
     if (key >= 0 && key < 256) specialKeyStates[key] = false;
 }
 
 // ===================================================
-// RENDERING HELPERS (semua tidak diubah dari kode pertama)
+// RENDERING HELPERS & MAP COMPONENTS
 // ===================================================
 void applyFlicker(float r, float g, float b) {
     glColor3f(r*flickerIntensity, g*flickerIntensity, b*flickerIntensity);
@@ -914,22 +894,127 @@ void drawFloor() {
     }
 }
 
-void drawWall(float x,float z,float sx,float sz) {
-    float wallH=3.5f,wainH=wallH*0.35f;
-    auto col=[&](float lr,float lg,float lb,float dr,float dg,float db){
-        if(lightsOn)glColor3f(lr,lg,lb); else glColor3f(dr*flickerIntensity,dg*flickerIntensity,db*flickerIntensity);
-    };
-    glPushMatrix();glTranslatef(x,wallH*0.5f,z);glScalef(sx,wallH,sz);
-    col(0.30f,0.28f,0.25f, 0.05f,0.04f,0.06f);glutSolidCube(1);glPopMatrix();
-    glPushMatrix();glTranslatef(x,wainH*0.5f,z);glScalef(sx+0.015f,wainH,sz+0.015f);
-    col(0.22f,0.20f,0.18f, 0.07f,0.06f,0.08f);glutSolidCube(1);glPopMatrix();
-    glPushMatrix();glTranslatef(x,wainH,z);glScalef(sx+0.02f,0.07f,sz+0.02f);
-    col(0.55f,0.50f,0.42f, 0.15f,0.13f,0.10f);glutSolidCube(1);glPopMatrix();
-    float panelBot=wainH+0.07f,panelH=wallH-0.12f-panelBot;
-    glPushMatrix();glTranslatef(x,panelBot+panelH*0.5f,z);glScalef(sx+0.013f,panelH,sz+0.013f);
-    col(0.72f,0.68f,0.60f, 0.10f,0.09f,0.12f);glutSolidCube(1);glPopMatrix();
-    glPushMatrix();glTranslatef(x,wallH-0.06f,z);glScalef(sx+0.025f,0.12f,sz+0.025f);
-    col(0.60f,0.56f,0.48f, 0.12f,0.10f,0.08f);glutSolidCube(1);glPopMatrix();
+// ===================================================
+// FIXED RENDERING: TEKSTUR DI TENGAH DINDING SAMPING
+// ===================================================
+void drawWall(float x, float z, float sx, float sz) {
+    float wallH = 3.5f; 
+    float wainH = wallH * 0.35f; 
+    float halfX = sx / 2.0f;
+    float halfZ = sz / 2.0f;
+
+    float tileX = sx / 3.5f;
+    float tileZ = sz / 3.5f;
+
+    // 1. GAMBAR BAGIAN BAWAH DINDING (POLOS COKELAT)
+    if (lightsOn) {
+        glColor3f(0.30f, 0.28f, 0.25f);
+    } else {
+        glColor3f(0.05f * flickerIntensity, 0.04f * flickerIntensity, 0.06f * flickerIntensity);
+    }
+
+    glBegin(GL_QUADS);
+    // Depan bawah
+    glNormal3f(0.0f, 0.0f, 1.0f);
+    glVertex3f(x - halfX, 0.0f,  z + halfZ); glVertex3f(x + halfX, 0.0f,  z + halfZ);
+    glVertex3f(x + halfX, wainH, z + halfZ); glVertex3f(x - halfX, wainH, z + halfZ);
+    // Belakang bawah
+    glNormal3f(0.0f, 0.0f, -1.0f);
+    glVertex3f(x - halfX, 0.0f,  z - halfZ); glVertex3f(x - halfX, wainH, z - halfZ);
+    glVertex3f(x + halfX, wainH, z - halfZ); glVertex3f(x + halfX, 0.0f,  z - halfZ);
+    // Kiri bawah
+    glNormal3f(-1.0f, 0.0f, 0.0f);
+    glVertex3f(x - halfX, 0.0f,  z - halfZ); glVertex3f(x - halfX, 0.0f,  z + halfZ);
+    glVertex3f(x - halfX, wainH, z + halfZ); glVertex3f(x - halfX, wainH, z - halfZ);
+    // Kanan bawah
+    glNormal3f(1.0f, 0.0f, 0.0f);
+    glVertex3f(x + halfX, 0.0f,  z - halfZ); glVertex3f(x + halfX, wainH, z - halfZ);
+    glVertex3f(x + halfX, wainH, z + halfZ); glVertex3f(x + halfX, 0.0f,  z + halfZ);
+    glEnd();
+
+    // 2. GAMBAR LIS GARIS KUNING / EMAS DI TENGAH DINDING
+    float trimH = 0.07f; 
+    if (lightsOn) {
+        glColor3f(0.55f, 0.50f, 0.42f);
+    } else {
+        glColor3f(0.15f * flickerIntensity, 0.13f * flickerIntensity, 0.10f * flickerIntensity);
+    }
+
+    glBegin(GL_QUADS);
+    // Garis depan
+    glVertex3f(x - halfX, wainH, z + halfZ);         glVertex3f(x + halfX, wainH, z + halfZ);
+    glVertex3f(x + halfX, wainH + trimH, z + halfZ); glVertex3f(x - halfX, wainH + trimH, z + halfZ);
+    // Garis belakang
+    glVertex3f(x - halfX, wainH, z - halfZ);         glVertex3f(x - halfX, wainH + trimH, z - halfZ);
+    glVertex3f(x + halfX, wainH + trimH, z - halfZ); glVertex3f(x + halfX, wainH, z - halfZ);
+    // Garis kiri
+    glVertex3f(x - halfX, wainH, z - halfZ);         glVertex3f(x - halfX, wainH, z + halfZ);
+    glVertex3f(x - halfX, wainH + trimH, z + halfZ); glVertex3f(x - halfX, wainH + trimH, z - halfZ);
+    // Garis kanan
+    glVertex3f(x + halfX, wainH, z - halfZ);         glVertex3f(x + halfX, wainH + trimH, z - halfZ);
+    glVertex3f(x + halfX, wainH + trimH, z + halfZ); glVertex3f(x + halfX, wainH, z + halfZ);
+    glEnd();
+
+    // 3. GAMBAR BAGIAN ATAS DINDING (BERMOTIF BERJEJER SURAT)
+    float topStart = wainH + trimH; 
+
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, wallTextureId);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    if (lightsOn) {
+        glColor3f(1.0f, 1.0f, 1.0f);
+    } else {
+        glColor3f(flickerIntensity * 0.4f, flickerIntensity * 0.4f, flickerIntensity * 0.5f);
+    }
+
+    glBegin(GL_QUADS);
+    // Sisi Depan atas (+Z)
+    glNormal3f(0.0f, 0.0f, 1.0f);
+    glTexCoord2f(0.0f,  0.0f); glVertex3f(x - halfX, topStart, z + halfZ);
+    glTexCoord2f(tileX, 0.0f); glVertex3f(x + halfX, topStart, z + halfZ);
+    glTexCoord2f(tileX, 1.0f); glVertex3f(x + halfX, wallH,    z + halfZ);
+    glTexCoord2f(0.0f,  1.0f); glVertex3f(x - halfX, wallH,    z + halfZ);
+
+    // Sisi Belakang atas (-Z)
+    glNormal3f(0.0f, 0.0f, -1.0f);
+    glTexCoord2f(tileX, 0.0f); glVertex3f(x - halfX, topStart, z - halfZ);
+    glTexCoord2f(tileX, 1.0f); glVertex3f(x - halfX, wallH,    z - halfZ);
+    glTexCoord2f(0.0f,  1.0f); glVertex3f(x + halfX, wallH,    z - halfZ);
+    glTexCoord2f(0.0f,  0.0f); glVertex3f(x + halfX, topStart, z - halfZ);
+
+    // Sisi Kiri atas (-X)
+    glNormal3f(-1.0f, 0.0f, 0.0f);
+    glTexCoord2f(0.0f,  0.0f); glVertex3f(x - halfX, topStart, z - halfZ);
+    glTexCoord2f(tileZ, 0.0f); glVertex3f(x - halfX, topStart, z + halfZ);
+    glTexCoord2f(tileZ, 1.0f); glVertex3f(x - halfX, wallH,    z + halfZ);
+    glTexCoord2f(0.0f,  1.0f); glVertex3f(x - halfX, wallH,    z - halfZ);
+
+    // Sisi Kanan atas (+X)
+    glNormal3f(1.0f, 0.0f, 0.0f);
+    glTexCoord2f(tileZ, 0.0f); glVertex3f(x + halfX, topStart, z - halfZ);
+    glTexCoord2f(tileZ, 1.0f); glVertex3f(x + halfX, wallH,    z - halfZ);
+    glTexCoord2f(0.0f,  1.0f); glVertex3f(x + halfX, wallH,    z + halfZ);
+    glTexCoord2f(0.0f,  0.0f); glVertex3f(x + halfX, topStart, z + halfZ);
+    glEnd();
+
+    // ── SISI ATAS PILAR (Atap) ──
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    
+    glBegin(GL_QUADS);
+    glNormal3f(0.0f, 1.0f, 0.0f);
+    glTexCoord2f(0.0f,  tileZ); glVertex3f(x - halfX, wallH, z - halfZ);
+    glTexCoord2f(0.0f,  0.0f);  glVertex3f(x - halfX, wallH, z + halfZ);
+    glTexCoord2f(tileX, 0.0f);  glVertex3f(x + halfX, wallH, z + halfZ);
+    glTexCoord2f(tileX, tileZ); glVertex3f(x + halfX, wallH, z - halfZ);
+    glEnd();
+
+    glDisable(GL_TEXTURE_2D); 
 }
 
 void drawMaze() {
@@ -1101,7 +1186,7 @@ void drawGPS() {
     drawText2D(bx1+5,by1-18,playerHasTreasure?"GOT IT!":"TREASURE",1,0.85f,0);
     float bx2=110,by2=490;
     glColor3f(0.08f,0.08f,0.12f);
-    glBegin(GL_QUADS);glVertex2f(bx2,by2);glVertex2f(bx2+bs,by2);glVertex2f(bx2+bs,by2+bs);glVertex2f(bx2,by2+bs);glEnd();
+    glBegin(GL_QUADS);glVertex2f(bx2,by2);glVertex2f(bx2+bs,by2);glVertex2f(bx2+bs,by2+bs);glVertex2f(bx2+bs,by2+bs);glEnd();
     glColor3f(0.5f,0.5f,0.5f);glLineWidth(2);
     glBegin(GL_LINE_LOOP);glVertex2f(bx2,by2);glVertex2f(bx2+bs,by2);glVertex2f(bx2+bs,by2+bs);glVertex2f(bx2,by2+bs);glEnd();
     drawGPSArrow(bx2+bs/2,by2+bs/2,exitX,exitZ,0,1,0.3f);
@@ -1150,7 +1235,7 @@ void drawMenu() {
     drawText2D(180,324,"Gold GPS box      : Arrow to Treasure",1,0.85f,0);
     drawText2D(180,302,"Green GPS box     : Arrow to Exit",0,1,0.3f);
     drawText2D(200,265,"--- RULES ---",0.6f,0.6f,1);
-    drawText2D(180,242,"Every 30s lights come ON for 10s!",0.9f,0.25f,0.25f);
+    drawText2D(180,242,"Every 60s lights come ON for 10s!",0.9f,0.25f,0.25f);
     drawText2D(180,220,"Lights make enemies faster. Hide to stay safe!",0.9f,0.25f,0.25f);
     drawText2D(180,198,"Avoid the humanoid enemies!",0.9f,0.4f,0.65f);
     drawText2D(180,176,"Exit with treasure = best score!",1,0.85f,0);
@@ -1227,25 +1312,33 @@ void reshape(int w,int h) {
     glMatrixMode(GL_MODELVIEW);
 }
 
-void init() {
-    glEnable(GL_DEPTH_TEST);glClearColor(0.03f,0.03f,0.06f,1);glShadeModel(GL_SMOOTH);
+void initRendering() {
+    glEnable(GL_DEPTH_TEST); 
+    glClearColor(0.03f,0.03f,0.06f,1);
+    glShadeModel(GL_SMOOTH);
+
+    Image* wallImg = loadBMP("wall.bmp"); 
+    wallTextureId = loadTexture(wallImg); 
+    delete wallImg; 
 }
 
 int main(int argc,char**argv) {
     srand((unsigned)time(NULL));
-    glutInit(&argc,argv);
-    glutInitDisplayMode(GLUT_DOUBLE|GLUT_RGB|GLUT_DEPTH);
-    glutInitWindowSize(800,600);glutInitWindowPosition(100,100);
-    glutCreateWindow("Maze Escape - Find Treasure & Survive");
-    init();
-    glutDisplayFunc(display);glutReshapeFunc(reshape);
-    glutKeyboardFunc(keyboard);glutSpecialFunc(specialKeys);
+    glutInit(&argc,argv); 
+    glutInitDisplayMode(GLUT_DOUBLE|GLUT_RGB|GLUT_DEPTH); 
+    glutInitWindowSize(800,600);glutInitWindowPosition(100,100); 
+    glutCreateWindow("Maze Escape - Find Treasure & Survive"); 
+    
+    initRendering(); 
+    
+    glutDisplayFunc(display);glutReshapeFunc(reshape); 
+    glutKeyboardFunc(keyboard);glutSpecialFunc(specialKeys); 
     glutKeyboardUpFunc(keyboardUp);glutSpecialUpFunc(specialKeysUp);
     glutIgnoreKeyRepeat(1);
     glutPassiveMotionFunc(mouseMotion);
     glutSetCursor(GLUT_CURSOR_NONE);
     glutWarpPointer(windowWidth / 2, windowHeight / 2);
-    glutTimerFunc(16,update,0);
-    glutMainLoop();
-    return 0;
+    glutTimerFunc(16,update,0); 
+    glutMainLoop(); 
+    return 0; 
 }
