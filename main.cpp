@@ -17,8 +17,8 @@
 #include "imageloader.cpp"
 
 // ================= CONSTANTS =================
-#define MAP_MIN -14.0f
-#define MAP_MAX  14.0f
+#define MAP_MIN -20.0f
+#define MAP_MAX  20.0f
 #ifndef M_PI
 #define M_PI 3.14159265f
 #endif
@@ -33,7 +33,24 @@ float playerAngle = 0.0f;
 float speed = 3.2f; // units per second
 float runMultiplier = 1.8f;
 float slowMultiplier = 0.45f;
-bool playerHasTreasure = false;
+// ================= TREASURE =================
+// GANTI:
+// float treasureX, treasureZ;
+// DENGAN:
+float treasureX[3], treasureZ[3];
+bool treasureCollected[3] = {false, false, false};
+int treasureCount = 3;
+// Tambahkan fungsi ini setelah deklarasi global
+int treasuresHeld() {
+    int count = 0;
+    for (int i = 0; i < treasureCount; i++)
+        if (treasureCollected[i]) count++;
+    return count;
+}
+
+bool allTreasuresCollected() {
+    return treasuresHeld() == treasureCount;
+}
 bool playerIsHiding = false;
 bool keyStates[256] = {false};
 bool specialKeyStates[256] = {false};
@@ -53,65 +70,92 @@ GLuint wallTextureId;
 
 // ================= WALLS =================
 struct Wall { float x, z, sx, sz; };
-
 Wall walls[] = {
-    // Outer boundary
-    { 0,  -14,  28,  0.6f},   // 0: south wall
-    { 0,   14,  28,  0.6f},   // 1: north wall
-    {-14,   0,  0.6f, 28},    // 2: west wall
-    { 14,   3.0f, 0.6f, 22},  // 3: east wall upper (gap at z=-8 to -12 = exit)
-    { 14, -12.5f, 0.6f,  3},  // 4: east wall lower sliver
+    // ── OUTER BOUNDARY ──
+    { 0,  -20,   40,  0.6f},  // 0: south
+    { 0,   20,   40,  0.6f},  // 1: north
+    {-20,   0,  0.6f, 40},    // 2: west
+    { 20,  4.75f, 0.6f, 29.6f},  // 3: east upper (z=-10.5 s/d z=20) — JANGAN UBAH
+    { 20,-16.75f, 0.6f,  5.64f},  // 4: east lower (z=-20 s/d -13.5) — JANGAN UBAH
 
-    // Horizontal walls
-    {-5,   10,  18,  0.5f},   // 5
-    { 4,    6,  12,  0.5f},   // 6
-    {-8,    6,   8,  0.5f},   // 7
-    {-4,    2,  12,  0.5f},   // 8
-    { 6,   -2,  10,  0.5f},   // 9
-    {-8,   -2,   8,  0.5f},   // 10
-    { 2,   -6,  10,  0.5f},   // 11
-    {-6,  -10,  10,  0.5f},   // 12
-    { 5,  -10,   6,  0.5f},   // 13
+    // ── HORIZONTAL WALLS ──
+    // z=16
+    {-18,  16,    4,  0.6f},  // 5:  x=-20 s/d -16
+    { -4,  16,   12,  0.6f},  // 6:  x=-10 s/d  2  | gap -16 s/d -10 = 6u ✓
+    {  8,  16,   10,  0.6f},  // 7:  x=3 s/d 13    | gap 2 s/d 8 = 6u ✓
 
-    // Vertical walls
-    {-10,   8,  0.5f, 12},    // 14
-    { -2,   8,  0.5f,  8},    // 15
-    {  6,   4,  0.5f, 12},    // 16
-    { 10,   8,  0.5f,  8},    // 17
-    {-10,  -4,  0.5f,  8},    // 18
-    {  2,  -2,  0.5f,  8},    // 19
-    { 10,  -4,  0.5f,  8},    // 20
-    {-6,  -12,  0.5f,  4},    // 21
-    { 6,  -12,  0.5f,  4},    // 22
+    // z=10
+    {-17,  10,    6,  0.6f},  // 8:  x=-20 s/d -14  | DIPERBAIKI: nyambung west, gap ke -14
+    { -8,  10,   12,  0.6f},  // 9:  x=-14 s/d -2   | DIPERBAIKI: sz=12, nyambung gap -14 s/d -2
+    {  4,  10,    8,  0.6f},  // 10: x=0 s/d 8      | gap -2 s/d 4 = 6u ✓
+
+    // z=4
+    {-19,   4,   10,  0.6f},  // 11: x=-20 s/d -9   | DIPERBAIKI: mulai dari x=-20 (west)
+    {  0,   4,   10,  0.6f},  // 12: x=-5 s/d 5     | gap -9 s/d -5 = 4u ✓
+    { 14,   4,    8,  0.6f},  // 13: x=10 s/d 18    | DIPERBAIKI: sz=8 nyambung x=16
+
+    // z=-2
+    {-20,  -2,    6,  0.6f},  // 14: x=-20 s/d -17  ✓
+    { -6,  -2,   10,  0.6f},  // 15: x=-11 s/d -1   ✓
+    {  8,  -2,    8,  0.6f},  // 16: x=4 s/d 12     ✓
+
+    // z=-8
+    {-14,  -8,    8,  0.6f},  // 17: x=-18 s/d -10  ✓
+    {  2,  -8,    8,  0.6f},  // 18: x=-2 s/d 6     ✓
+
+    // z=-14
+    {-20, -14,    6,  0.6f},  // 19: x=-20 s/d -17  ✓
+    { -4, -14,   10,  0.6f},  // 20: x=-9 s/d 1     | DIPERBAIKI: sz=10, tutup gap x=0 s/d 4
+
+    // ── VERTICAL WALLS ──
+    // x=-16
+    {-16,  18,  0.6f,  4},    // 21: z=16 s/d 20 ✓
+    {-16,   7,  0.6f,  6},    // 22: z=4 s/d 10  ✓
+    {-16,  -5,  0.6f,  6},    // 23: z=-8 s/d -2 ✓
+    {-16, -17,  0.6f,  6},    // 24: z=-20 s/d -14 ✓
+
+    // x=-4
+    { -4,  18,  0.6f,  4},    // 25: ✓
+    { -4,   7,  0.6f,  6},    // 26: ✓
+    { -4,  -5,  0.6f,  6},    // 27: ✓
+    { -4, -17,  0.6f,  6},    // 28: ✓
+
+    // x=8
+    {  8,  18,  0.6f,  4},    // 29: ✓
+    {  8,   7,  0.6f,  6},    // 30: ✓
+    {  8,  -5,  0.6f,  6},    // 31: ✓
+
+    // x=16 — DIPERBAIKI: semua segmen nyambung tanpa gap vertikal
+    { 16,  18,  0.6f,  4},    // 32: z=16 s/d 20 (nempel north) ✓
+    { 16,   7,  0.6f,  6},    // 33: z=4 s/d 10  | DIPERBAIKI: ganti dari (1,6) → (7,6)
+    { 16,  -5,  0.6f,  6},    // 34: z=-8 s/d -2 | DIPERBAIKI: ganti dari (-11,4) → (-5,6)
+    { 16, -17,  0.6f,  6},    // 35: z=-20 s/d -14 | TAMBAH: nyambung south
 };
-int wallCount = 23;
-
+int wallCount = 36;  // +1 karena tambah wall x=16 south
 // ================= EXIT =================
-float exitX = 14.5f, exitZ = -10.0f;
+float exitX = 20.5f, exitZ = -12.0f;  // tengah gap = ((-9.5)+(-14.5))/2 = -12
 
 // ================= DOOR STATE (tambah di global vars) =================
 float doorAngle = 0.0f;
 float doorOpenSpeed = 80.0f;
 bool doorShouldOpen = false;
 
-// ================= TREASURE =================
-float treasureX, treasureZ;
-
 // ================= HIDING SPOTS =================
 struct HidingSpot { float x, z; };
+
 HidingSpot hidingSpots[] = {
-    {-12.5f, -12.5f},
-    {-12.5f,  12.5f},
-    { 12.5f,  12.5f},
-    { 12.5f,   8.0f},
-    {-13.0f,   4.0f},
-    {-13.0f,  -7.0f},
-    {  0.5f,  12.5f},
-    { -6.5f,  -1.5f},
-    {  4.5f,   7.5f},
-    { -4.0f, -12.5f},
-    {  9.5f,  -1.5f},
-    { -1.5f,   2.0f},
+    {-18.0f,  18.5f},  // pojok kiri atas, di luar semua dinding
+    { -7.0f,  18.5f},  // lorong atas tengah
+    {  6.0f,  18.5f},  // lorong atas kanan
+    {-18.0f,   7.0f},  // lorong kiri, antara z=4 dan z=10
+    { -7.0f,   7.0f},  // lorong tengah-kiri antara z=4 dan z=10
+    { 11.0f,   7.0f},  // lorong kanan antara z=4 dan z=10
+    {-18.0f,  -5.0f},  // lorong kiri antara z=-8 dan z=-2
+    { -7.0f,  -5.0f},  // lorong tengah antara z=-8 dan z=-2
+    { 11.0f,  -5.0f},  // lorong kanan antara z=-8 dan z=-2
+    {-18.0f, -16.0f},  // lorong kiri bawah
+    { -7.0f, -16.0f},  // lorong tengah bawah
+    {  3.0f, -16.0f},  // lorong kanan bawah
 };
 int hidingCount = 12;
 
@@ -129,7 +173,7 @@ struct Enemy {
     int   wpCount;
 };
 
-Enemy enemies[5];
+Enemy enemies[8];
 
 // ================= LIGHT CYCLE =================
 float gameTimer = 0.0f;
@@ -174,8 +218,8 @@ bool positionValid(float x, float z, float margin = 0.8f) {
 void randomPos(float &x, float &z) {
     int tries = 0;
     do {
-        x = (float)(rand() % 240 - 120) / 10.0f;
-        z = (float)(rand() % 240 - 120) / 10.0f;
+        x = (float)(rand() % 340 - 170) / 10.0f;
+        z = (float)(rand() % 340 - 170) / 10.0f;
         tries++;
     } while (!positionValid(x, z) && tries < 1000);
 }
@@ -202,52 +246,86 @@ bool checkCollision(float newX, float newZ) {
 // ENEMY INIT
 // ===================================================
 void initEnemies() {
-    enemies[0].x = -12.5f; enemies[0].z = 12.4f;
-    enemies[0].angle = 0; enemies[0].speed = 0.0625f; enemies[0].stuckFrames = 0;
+    // Enemy 0 - area kiri atas
+    enemies[0].x = -18.0f; enemies[0].z = 13.0f;
+    enemies[0].angle = 0; enemies[0].speed = 0.065f; enemies[0].stuckFrames = 0;
     enemies[0].pathX.clear(); enemies[0].pathZ.clear(); enemies[0].pathIndex = 0;
     enemies[0].waypointIdx = 0; enemies[0].wpCount = 4;
-    enemies[0].wpX[0]=-12.5f; enemies[0].wpZ[0]= 12.4f;
-    enemies[0].wpX[1]=-11.0f; enemies[0].wpZ[1]= 12.4f;
-    enemies[0].wpX[2]=-11.0f; enemies[0].wpZ[2]= 10.7f;
-    enemies[0].wpX[3]=-12.5f; enemies[0].wpZ[3]= 10.7f;
+    enemies[0].wpX[0]=-18.0f; enemies[0].wpZ[0]= 13.0f;
+    enemies[0].wpX[1]=-12.0f; enemies[0].wpZ[1]= 13.0f;
+    enemies[0].wpX[2]=-12.0f; enemies[0].wpZ[2]=  7.0f;
+    enemies[0].wpX[3]=-18.0f; enemies[0].wpZ[3]=  7.0f;
 
-    enemies[1].x = 11.5f; enemies[1].z = 12.0f;
-    enemies[1].angle = 0; enemies[1].speed = 0.0625f; enemies[1].stuckFrames = 0;
+    // Enemy 1 - area kanan atas
+    enemies[1].x = 11.0f; enemies[1].z = 18.0f;
+    enemies[1].angle = 0; enemies[1].speed = 0.065f; enemies[1].stuckFrames = 0;
     enemies[1].pathX.clear(); enemies[1].pathZ.clear(); enemies[1].pathIndex = 0;
     enemies[1].waypointIdx = 0; enemies[1].wpCount = 4;
-    enemies[1].wpX[0]= 11.5f; enemies[1].wpZ[0]= 12.0f;
-    enemies[1].wpX[1]= 11.5f; enemies[1].wpZ[1]=  7.0f;
-    enemies[1].wpX[2]= 12.8f; enemies[1].wpZ[2]=  7.0f;
-    enemies[1].wpX[3]= 12.8f; enemies[1].wpZ[3]= 12.0f;
+    enemies[1].wpX[0]= 11.0f; enemies[1].wpZ[0]= 18.0f;
+    enemies[1].wpX[1]= 17.0f; enemies[1].wpZ[1]= 18.0f;
+    enemies[1].wpX[2]= 17.0f; enemies[1].wpZ[2]= 12.0f;
+    enemies[1].wpX[3]= 11.0f; enemies[1].wpZ[3]= 12.0f;
 
-    enemies[2].x = -12.5f; enemies[2].z = -5.5f;
-    enemies[2].angle = 0; enemies[2].speed = 0.0625f; enemies[2].stuckFrames = 0;
+    // Enemy 2 - area kiri tengah
+    enemies[2].x = -18.0f; enemies[2].z = -5.0f;
+    enemies[2].angle = 0; enemies[2].speed = 0.07f; enemies[2].stuckFrames = 0;
     enemies[2].pathX.clear(); enemies[2].pathZ.clear(); enemies[2].pathIndex = 0;
     enemies[2].waypointIdx = 0; enemies[2].wpCount = 4;
-    enemies[2].wpX[0]=-12.5f; enemies[2].wpZ[0]= -5.5f;
-    enemies[2].wpX[1]=-12.5f; enemies[2].wpZ[1]= -8.8f;
-    enemies[2].wpX[2]=-11.0f; enemies[2].wpZ[2]= -8.8f;
-    enemies[2].wpX[3]=-11.0f; enemies[2].wpZ[3]= -5.5f;
+    enemies[2].wpX[0]=-18.0f; enemies[2].wpZ[0]= -5.0f;
+    enemies[2].wpX[1]=-18.0f; enemies[2].wpZ[1]= -8.0f;
+    enemies[2].wpX[2]=-12.0f; enemies[2].wpZ[2]= -8.0f;
+    enemies[2].wpX[3]=-12.0f; enemies[2].wpZ[3]= -5.0f;
 
-    enemies[3].x = 4.0f; enemies[3].z = -3.5f;
-    enemies[3].angle = 0; enemies[3].speed = 0.075f; enemies[3].stuckFrames = 0;
+    // Enemy 3 - area tengah
+    enemies[3].x = 4.0f; enemies[3].z = -3.0f;
+    enemies[3].angle = 0; enemies[3].speed = 0.08f; enemies[3].stuckFrames = 0;
     enemies[3].pathX.clear(); enemies[3].pathZ.clear(); enemies[3].pathIndex = 0;
     enemies[3].waypointIdx = 0; enemies[3].wpCount = 4;
-    enemies[3].wpX[0]= 4.0f; enemies[3].wpZ[0]= -3.0f;
-    enemies[3].wpX[1]= 8.5f; enemies[3].wpZ[1]= -3.0f;
-    enemies[3].wpX[2]= 8.5f; enemies[3].wpZ[2]= -5.5f;
-    enemies[3].wpX[3]= 4.0f; enemies[3].wpZ[3]= -5.5f;
+    enemies[3].wpX[0]=  4.0f; enemies[3].wpZ[0]= -3.0f;
+    enemies[3].wpX[1]= 10.0f; enemies[3].wpZ[1]= -3.0f;
+    enemies[3].wpX[2]= 10.0f; enemies[3].wpZ[2]= -8.0f;
+    enemies[3].wpX[3]=  4.0f; enemies[3].wpZ[3]= -8.0f;
 
-    enemies[4].x = 11.5f; enemies[4].z = -6.0f;
-    enemies[4].angle = 0; enemies[4].speed = 0.06875f; enemies[4].stuckFrames = 0;
+    // Enemy 4 - area kanan bawah (dekat exit)
+    enemies[4].x = 14.0f; enemies[4].z = -8.0f;
+    enemies[4].angle = 0; enemies[4].speed = 0.072f; enemies[4].stuckFrames = 0;
     enemies[4].pathX.clear(); enemies[4].pathZ.clear(); enemies[4].pathIndex = 0;
     enemies[4].waypointIdx = 0; enemies[4].wpCount = 4;
-    enemies[4].wpX[0]= 11.5f; enemies[4].wpZ[0]= -6.0f;
-    enemies[4].wpX[1]= 11.5f; enemies[4].wpZ[1]=-13.0f;
-    enemies[4].wpX[2]=  8.5f; enemies[4].wpZ[2]=-13.0f;
-    enemies[4].wpX[3]=  8.5f; enemies[4].wpZ[3]= -6.0f;
-}
+    enemies[4].wpX[0]= 14.0f; enemies[4].wpZ[0]= -8.0f;
+    enemies[4].wpX[1]= 14.0f; enemies[4].wpZ[1]=-16.0f;
+    enemies[4].wpX[2]=  8.0f; enemies[4].wpZ[2]=-16.0f;
+    enemies[4].wpX[3]=  8.0f; enemies[4].wpZ[3]= -8.0f;
 
+    // Enemy 5 - area tengah atas
+    enemies[5].x = -5.0f; enemies[5].z = 13.0f;
+    enemies[5].angle = 0; enemies[5].speed = 0.068f; enemies[5].stuckFrames = 0;
+    enemies[5].pathX.clear(); enemies[5].pathZ.clear(); enemies[5].pathIndex = 0;
+    enemies[5].waypointIdx = 0; enemies[5].wpCount = 4;
+    enemies[5].wpX[0]= -5.0f; enemies[5].wpZ[0]= 13.0f;
+    enemies[5].wpX[1]=  5.0f; enemies[5].wpZ[1]= 13.0f;
+    enemies[5].wpX[2]=  5.0f; enemies[5].wpZ[2]=  7.0f;
+    enemies[5].wpX[3]= -5.0f; enemies[5].wpZ[3]=  7.0f;
+
+    // Enemy 6 - area kiri bawah
+    enemies[6].x = -18.0f; enemies[6].z = -16.0f;
+    enemies[6].angle = 0; enemies[6].speed = 0.075f; enemies[6].stuckFrames = 0;
+    enemies[6].pathX.clear(); enemies[6].pathZ.clear(); enemies[6].pathIndex = 0;
+    enemies[6].waypointIdx = 0; enemies[6].wpCount = 4;
+    enemies[6].wpX[0]=-18.0f; enemies[6].wpZ[0]=-16.0f;
+    enemies[6].wpX[1]=-10.0f; enemies[6].wpZ[1]=-16.0f;
+    enemies[6].wpX[2]=-10.0f; enemies[6].wpZ[2]=-11.0f;
+    enemies[6].wpX[3]=-18.0f; enemies[6].wpZ[3]=-11.0f;
+
+    // Enemy 7 - patrol tengah luas (paling cepat)
+    enemies[7].x =  2.0f; enemies[7].z =  7.0f;
+    enemies[7].angle = 0; enemies[7].speed = 0.09f; enemies[7].stuckFrames = 0;
+    enemies[7].pathX.clear(); enemies[7].pathZ.clear(); enemies[7].pathIndex = 0;
+    enemies[7].waypointIdx = 0; enemies[7].wpCount = 4;
+    enemies[7].wpX[0]=  2.0f; enemies[7].wpZ[0]=  7.0f;
+    enemies[7].wpX[1]=  2.0f; enemies[7].wpZ[1]= -5.0f;
+    enemies[7].wpX[2]= -5.0f; enemies[7].wpZ[2]= -5.0f;
+    enemies[7].wpX[3]= -5.0f; enemies[7].wpZ[3]=  7.0f;
+}
 GLuint loadTexture(Image* image) {
     GLuint textureId;
     glGenTextures(1, &textureId);
@@ -260,10 +338,10 @@ GLuint loadTexture(Image* image) {
 // RESET / INIT
 // ===================================================
 void resetGame() {
+    for (int i = 0; i < treasureCount; i++) treasureCollected[i] = false;
     srand((unsigned)time(NULL));
     memset(keyStates, 0, sizeof(keyStates));
     memset(specialKeyStates, 0, sizeof(specialKeyStates));
-    playerHasTreasure = false;
     playerIsHiding = false;
     lightsOn = false;
     lightsOnTimer = 0.0f;
@@ -275,8 +353,8 @@ void resetGame() {
     flickerIntensity = 1.0f;
     breathTimer = 0.0f;
 
-    const float exitInsideX = 13.2f;
-    const float exitInsideZ = -10.0f;
+    const float exitInsideX = 18.5f;
+    const float exitInsideZ = -12.0f;
 
     int playerTries = 0;
     do {
@@ -284,26 +362,42 @@ void resetGame() {
         playerTries++;
     } while (!pathExists(playerX, playerZ, exitInsideX, exitInsideZ) && playerTries < 1000);
     if (!pathExists(playerX, playerZ, exitInsideX, exitInsideZ)) {
-        playerX = 12.6f;
-        playerZ = -10.0f;
+        playerX = 18.0f;
+        playerZ = -12.0f;
     }
 
+    // HAPUS blok treasure lama, GANTI DENGAN:
+for (int ti = 0; ti < treasureCount; ti++) {
     float tx, tz;
     int treasureTries = 0;
     do {
         randomPos(tx, tz);
+        bool tooClose = false;
+        // Tidak terlalu dekat player
+        if (fabs(tx - playerX) < 3.0f && fabs(tz - playerZ) < 3.0f) tooClose = true;
+        // Tidak terlalu dekat treasure lain
+        for (int tj = 0; tj < ti; tj++) {
+            if (fabs(tx - treasureX[tj]) < 3.0f && fabs(tz - treasureZ[tj]) < 3.0f)
+                tooClose = true;
+        }
+        if (!tooClose &&
+            pathExists(playerX, playerZ, tx, tz) &&
+            pathExists(tx, tz, exitInsideX, exitInsideZ)) {
+            break;
+        }
         treasureTries++;
-    } while (
-        ((fabs(tx - playerX) < 3.0f && fabs(tz - playerZ) < 3.0f) ||
-         !pathExists(playerX, playerZ, tx, tz) ||
-         !pathExists(tx, tz, exitInsideX, exitInsideZ)) &&
-        treasureTries < 1000
-    );
-    if (!pathExists(playerX, playerZ, tx, tz) || !pathExists(tx, tz, exitInsideX, exitInsideZ)) {
-        tx = 12.6f;
-        tz = -9.0f;
+    } while (treasureTries < 1000);
+
+    if (treasureTries >= 1000) {
+        // Fallback
+        treasureX[ti] = -18.0f + ti * 6.0f;
+        treasureZ[ti] = 18.0f;
+    } else {
+        treasureX[ti] = tx;
+        treasureZ[ti] = tz;
     }
-    treasureX = tx; treasureZ = tz;
+    treasureCollected[ti] = false;
+}
 
     initEnemies();
     gameState = STATE_PLAYING;
@@ -325,17 +419,21 @@ bool isNearHidingSpot() {
 }
 
 void checkTreasurePickup() {
-    if (!playerHasTreasure) {
-        float dx = playerX - treasureX, dz = playerZ - treasureZ;
-        if (sqrtf(dx*dx + dz*dz) < 1.0f) playerHasTreasure = true;
+    for (int i = 0; i < treasureCount; i++) {
+        if (!treasureCollected[i]) {
+            float dx = playerX - treasureX[i], dz = playerZ - treasureZ[i];
+            if (sqrtf(dx*dx + dz*dz) < 1.0f)
+                treasureCollected[i] = true;
+        }
     }
 }
 
 void checkExit() {
-    if (playerX > 13.5f && playerZ > -12.0f && playerZ < -8.0f) {
-        wonWithTreasure = playerHasTreasure;
+    if (playerX > 19.5f && playerZ > -13.5f && playerZ < -10.5f) {
+        wonWithTreasure = allTreasuresCollected();
         float elapsed = (float)glutGet(GLUT_ELAPSED_TIME) / 1000.0f - startTime;
-        finalScore = wonWithTreasure ? (int)(10000.0f / (elapsed + 1.0f)) * 10 : 0;
+        int held = treasuresHeld();
+        finalScore = held > 0 ? (int)(10000.0f / (elapsed + 1.0f)) * 10 * held : 0;
         gameState = STATE_WIN;
     }
 }
@@ -563,7 +661,7 @@ bool chooseEnemyPatrolTarget(Enemy &e) {
 }
 
 void updateEnemies(float dt) {
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 8; i++) {
         Enemy &e = enemies[i];
 
         if (e.pathIndex >= (int)e.pathX.size()) {
@@ -1042,12 +1140,12 @@ void drawMaze() {
 }
 
 void drawExit() {
-    const float frameX  = 14.0f;
-    const float doorZ   = exitZ;       // -10.0f
-    const float doorW   = 1.06f;        // setengah lebar bukaan
+    const float frameX  = 20.0f;
+    const float doorZ   = exitZ;       // -12.0f
+    const float doorW   = 1.5f;        // lebih lebar sesuai gap besar
     const float doorH   = 3.4f;
     const float depth   = 0.22f;
-    const float doorShift = 0.485f;      // geser pintu ke kanan (+Z)
+    const float doorShift = 0.0f;
     const float fLeft   = doorZ - doorW + doorShift;
     const float fRight  = doorZ + doorW + doorShift;
 
@@ -1075,7 +1173,7 @@ void drawExit() {
     // 1. LANTAI GLOW HIJAU
     // ==============================================
     glPushMatrix();
-    glTranslatef(13.5f, 0.02f, doorZ);
+    glTranslatef(19.5f, 0.02f, doorZ);
     glColor3f(0, pulse*0.7f, pulse*0.3f);
     glBegin(GL_QUADS);
     glVertex3f(-0.3f,0,-doorW); glVertex3f(0.3f,0,-doorW);
@@ -1248,62 +1346,177 @@ void drawCoin(float x,float y,float z,float radius,float thickness) {
         glVertex3f(cx,-thickness/2,cz);glVertex3f(cx,thickness/2,cz);}glEnd();
     glPopMatrix();
 }
-
 void drawTreasure() {
-    if(playerHasTreasure)return;
-    float t=(float)glutGet(GLUT_ELAPSED_TIME)/600.0f;
-    float hover=sinf(t*1.5f)*0.08f;
-    float gp=0.3f+0.2f*sinf(t*3);
-    glColor3f(gp,gp*0.7f,0);
-    glPushMatrix();glTranslatef(treasureX,0.02f,treasureZ);
-    glBegin(GL_TRIANGLE_FAN);glVertex3f(0,0,0);
-    for(int s=0;s<=20;s++){float a=s*2*(float)M_PI/20,r=0.8f+0.15f*sinf(t*4+s);glVertex3f(cosf(a)*r,0,sinf(a)*r);}
-    glEnd();glPopMatrix();
-    glPushMatrix();glTranslatef(treasureX,hover,treasureZ);
-    float gR=lightsOn?1.0f:0.85f*flickerIntensity,gG=lightsOn?0.78f:0.65f*flickerIntensity;
-    glColor3f(gR,gG,0);
-    drawCoin(0.15f,0.04f,0.10f,0.18f,0.06f);drawCoin(-0.20f,0.04f,0.05f,0.16f,0.06f);
-    drawCoin(0.00f,0.04f,-0.20f,0.17f,0.06f);drawCoin(0.25f,0.04f,-0.05f,0.15f,0.06f);
-    drawCoin(-0.10f,0.04f,-0.15f,0.18f,0.06f);
-    for(int k=0;k<5;k++) drawCoin(0,0.10f+k*0.08f,0,0.22f-k*0.01f,0.08f);
-    float gl=0.5f+0.5f*sinf(t*5);glColor3f(1,1,gl*0.5f);
-    glPushMatrix();glTranslatef(0,0.55f,0);glutSolidSphere(0.06f,8,8);glPopMatrix();
-    glPopMatrix();
-}
+    float t = (float)glutGet(GLUT_ELAPSED_TIME) / 600.0f;
+    for (int i = 0; i < treasureCount; i++) {
+        if (treasureCollected[i]) continue;
+        float hover = sinf(t * 1.5f + i * 2.0f) * 0.08f;
+        float gp = 0.3f + 0.2f * sinf(t * 3 + i);
 
+        glColor3f(gp, gp * 0.7f, 0);
+        glPushMatrix(); glTranslatef(treasureX[i], 0.02f, treasureZ[i]);
+        glBegin(GL_TRIANGLE_FAN); glVertex3f(0, 0, 0);
+        for (int s = 0; s <= 20; s++) {
+            float a = s * 2 * (float)M_PI / 20;
+            float r = 0.8f + 0.15f * sinf(t * 4 + s);
+            glVertex3f(cosf(a)*r, 0, sinf(a)*r);
+        }
+        glEnd(); glPopMatrix();
+
+        glPushMatrix(); glTranslatef(treasureX[i], hover, treasureZ[i]);
+        float gR = lightsOn ? 1.0f : 0.85f * flickerIntensity;
+        float gG = lightsOn ? 0.78f : 0.65f * flickerIntensity;
+        glColor3f(gR, gG, 0);
+        drawCoin(0.15f, 0.04f, 0.10f, 0.18f, 0.06f);
+        drawCoin(-0.20f, 0.04f, 0.05f, 0.16f, 0.06f);
+        drawCoin(0.00f, 0.04f, -0.20f, 0.17f, 0.06f);
+        drawCoin(0.25f, 0.04f, -0.05f, 0.15f, 0.06f);
+        drawCoin(-0.10f, 0.04f, -0.15f, 0.18f, 0.06f);
+        for (int k = 0; k < 5; k++)
+            drawCoin(0, 0.10f + k * 0.08f, 0, 0.22f - k * 0.01f, 0.08f);
+        float gl = 0.5f + 0.5f * sinf(t * 5 + i);
+        glColor3f(1, 1, gl * 0.5f);
+        glPushMatrix(); glTranslatef(0, 0.55f, 0); glutSolidSphere(0.06f, 8, 8); glPopMatrix();
+        glPopMatrix();
+    }
+}
 void drawEnemyBody(int i) {
-    Enemy &e=enemies[i];
-    float t=(float)glutGet(GLUT_ELAPSED_TIME)/500.0f;
-    float bob=sinf(t*3+i*1.5f)*0.05f;
-    glPushMatrix();
-    glTranslatef(e.x,bob,e.z);
-    glRotatef(e.angle+180.0f,0,1,0);
+    Enemy &e = enemies[i];
+    float t = (float)glutGet(GLUT_ELAPSED_TIME) / 500.0f;
+    float bob = sinf(t * 3 + i * 1.5f) * 0.06f;
 
-    if(lightsOn)glColor3f(0.7f,0.1f,0.35f);else glColor3f(0.5f,0.05f,0.25f);
-    glPushMatrix();glTranslatef(0,1.1f,0);glScalef(0.55f,0.7f,0.35f);glutSolidCube(1);glPopMatrix();
-    if(lightsOn)glColor3f(0.85f,0.2f,0.4f);else glColor3f(0.6f,0.1f,0.28f);
-    glPushMatrix();glTranslatef(0,1.65f,0);glutSolidSphere(0.22f,10,10);glPopMatrix();
-    float eg=lightsOn?1.0f:(0.8f+0.2f*sinf(t*4+i));
-    glColor3f(eg,eg*0.9f,0);
-    glPushMatrix();glTranslatef(0.09f,1.68f,-0.19f);glutSolidSphere(0.055f,6,6);glPopMatrix();
-    glPushMatrix();glTranslatef(-0.09f,1.68f,-0.19f);glutSolidSphere(0.055f,6,6);glPopMatrix();
-    if(lightsOn)glColor3f(0.5f,0.08f,0.25f);else glColor3f(0.35f,0.04f,0.18f);
-    glPushMatrix();glTranslatef(0,0.65f,0);glScalef(0.6f,0.25f,0.38f);glutSolidCube(1);glPopMatrix();
-    float armSw=sinf(t*3+i*1.5f)*15.0f;
-    if(lightsOn)glColor3f(0.65f,0.08f,0.30f);else glColor3f(0.45f,0.04f,0.22f);
-    glPushMatrix();glTranslatef(-0.35f,1.05f,0);glRotatef(armSw,1,0,0);glTranslatef(0,-0.25f,0);glScalef(0.16f,0.5f,0.16f);glutSolidCube(1);glPopMatrix();
-    glPushMatrix();glTranslatef(0.35f,1.05f,0);glRotatef(-armSw,1,0,0);glTranslatef(0,-0.25f,0);glScalef(0.16f,0.5f,0.16f);glutSolidCube(1);glPopMatrix();
-    float legSw=sinf(t*3+i*1.5f+(float)M_PI)*18.0f;
-    if(lightsOn)glColor3f(0.4f,0.07f,0.2f);else glColor3f(0.28f,0.04f,0.14f);
-    glPushMatrix();glTranslatef(-0.18f,0.5f,0);glRotatef(legSw,1,0,0);glTranslatef(0,-0.3f,0);glScalef(0.2f,0.6f,0.22f);glutSolidCube(1);glPopMatrix();
-    glPushMatrix();glTranslatef(0.18f,0.5f,0);glRotatef(-legSw,1,0,0);glTranslatef(0,-0.3f,0);glScalef(0.2f,0.6f,0.22f);glutSolidCube(1);glPopMatrix();
-    glColor3f(0.05f,0.02f,0.05f);
-    glPushMatrix();glTranslatef(0,0.02f,0);glScalef(0.7f,0.05f,0.5f);glutSolidCube(1);glPopMatrix();
+    glPushMatrix();
+    glTranslatef(e.x, bob, e.z);
+    glRotatef(e.angle + 180.0f, 0, 1, 0);
+
+    // ── BAYANGAN DI LANTAI ──
+    glColor3f(0.0f, 0.0f, 0.0f);
+    glPushMatrix();
+    glTranslatef(0, 0.01f, 0);
+    glScalef(1.0f, 0.02f, 0.8f);
+    glutSolidSphere(0.5f, 8, 4);
+    glPopMatrix();
+
+    // ── JUBAH / BODY UTAMA (lebih tinggi, ramping) ──
+    if (lightsOn) glColor3f(0.08f, 0.04f, 0.12f);
+    else glColor3f(0.04f, 0.02f, 0.08f);
+    glPushMatrix();
+    glTranslatef(0, 1.0f, 0);
+    glScalef(0.45f, 1.1f, 0.3f);
+    glutSolidCube(1);
+    glPopMatrix();
+
+    // ── BAHU LEBAR ──
+    if (lightsOn) glColor3f(0.10f, 0.05f, 0.15f);
+    else glColor3f(0.05f, 0.02f, 0.10f);
+    glPushMatrix();
+    glTranslatef(0, 1.55f, 0);
+    glScalef(0.75f, 0.18f, 0.32f);
+    glutSolidCube(1);
+    glPopMatrix();
+
+    // ── KEPALA (elongated, lebih panjang ke atas) ──
+    if (lightsOn) glColor3f(0.12f, 0.06f, 0.16f);
+    else glColor3f(0.06f, 0.03f, 0.10f);
+    glPushMatrix();
+    glTranslatef(0, 1.95f, 0);
+    glScalef(0.85f, 1.1f, 0.75f);
+    glutSolidSphere(0.22f, 10, 10);
+    glPopMatrix();
+
+    // ── MATA MERAH MENYALA ──
+    float eg = lightsOn ? 1.0f : (0.7f + 0.3f * sinf(t * 5 + i));
+    float eyeFlare = 0.5f + 0.5f * sinf(t * 7 + i * 2.1f); // kedip acak
+    glColor3f(eg, eg * eyeFlare * 0.1f, 0.0f);
+    glPushMatrix(); glTranslatef( 0.09f, 2.0f, -0.19f); glutSolidSphere(0.06f, 8, 8); glPopMatrix();
+    glPushMatrix(); glTranslatef(-0.09f, 2.0f, -0.19f); glutSolidSphere(0.06f, 8, 8); glPopMatrix();
+
+    // ── GLOW MATA (halo kecil) ──
+    glColor3f(eg * 0.4f, 0.0f, 0.0f);
+    glPushMatrix(); glTranslatef( 0.09f, 2.0f, -0.17f); glutSolidSphere(0.10f, 6, 6); glPopMatrix();
+    glPushMatrix(); glTranslatef(-0.09f, 2.0f, -0.17f); glutSolidSphere(0.10f, 6, 6); glPopMatrix();
+
+    // ── MULUT / CELAH GELAP ──
+    glColor3f(0.0f, 0.0f, 0.0f);
+    glPushMatrix();
+    glTranslatef(0, 1.82f, -0.19f);
+    glScalef(0.18f, 0.04f, 0.04f);
+    glutSolidCube(1);
+    glPopMatrix();
+
+    // ── TANDUK KECIL ──
+    if (lightsOn) glColor3f(0.25f, 0.05f, 0.05f);
+    else glColor3f(0.12f, 0.02f, 0.02f);
+    glPushMatrix();
+    glTranslatef( 0.08f, 2.22f, 0);
+    glRotatef(-20, 0, 0, 1);
+    glScalef(0.05f, 0.18f, 0.05f);
+    glutSolidCone(1, 1, 6, 1);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslatef(-0.08f, 2.22f, 0);
+    glRotatef( 20, 0, 0, 1);
+    glScalef(0.05f, 0.18f, 0.05f);
+    glutSolidCone(1, 1, 6, 1);
+    glPopMatrix();
+
+    // ── TANGAN PANJANG (cakar) ──
+    float armSw = sinf(t * 3 + i * 1.5f) * 20.0f;
+    if (lightsOn) glColor3f(0.10f, 0.05f, 0.14f);
+    else glColor3f(0.05f, 0.02f, 0.08f);
+    glPushMatrix();
+    glTranslatef(-0.38f, 1.4f, 0);
+    glRotatef(armSw + 15, 1, 0, 0);
+    glTranslatef(0, -0.3f, 0);
+    glScalef(0.12f, 0.65f, 0.12f);
+    glutSolidCube(1);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslatef( 0.38f, 1.4f, 0);
+    glRotatef(-armSw + 15, 1, 0, 0);
+    glTranslatef(0, -0.3f, 0);
+    glScalef(0.12f, 0.65f, 0.12f);
+    glutSolidCube(1);
+    glPopMatrix();
+
+    // ── CAKAR (ujung tangan) ──
+    glColor3f(0.35f, 0.05f, 0.05f);
+    float clawOffL[3] = {-0.05f, 0.0f, 0.05f};
+    for (int c = 0; c < 3; c++) {
+        glPushMatrix();
+        glTranslatef(-0.38f + clawOffL[c], 0.75f + sinf(t*3+i*1.5f+armSw*0.01f)*0.3f, -0.1f);
+        glScalef(0.03f, 0.12f, 0.03f);
+        glutSolidCone(1, 1, 5, 1);
+        glPopMatrix();
+        glPushMatrix();
+        glTranslatef( 0.38f + clawOffL[c], 0.75f - sinf(t*3+i*1.5f+armSw*0.01f)*0.3f, -0.1f);
+        glScalef(0.03f, 0.12f, 0.03f);
+        glutSolidCone(1, 1, 5, 1);
+        glPopMatrix();
+    }
+
+    // ── KAKI ──
+    float legSw = sinf(t * 3 + i * 1.5f + (float)M_PI) * 22.0f;
+    if (lightsOn) glColor3f(0.06f, 0.03f, 0.10f);
+    else glColor3f(0.03f, 0.01f, 0.06f);
+    glPushMatrix();
+    glTranslatef(-0.16f, 0.45f, 0);
+    glRotatef(legSw, 1, 0, 0);
+    glTranslatef(0, -0.32f, 0);
+    glScalef(0.18f, 0.65f, 0.18f);
+    glutSolidCube(1);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslatef( 0.16f, 0.45f, 0);
+    glRotatef(-legSw, 1, 0, 0);
+    glTranslatef(0, -0.32f, 0);
+    glScalef(0.18f, 0.65f, 0.18f);
+    glutSolidCube(1);
+    glPopMatrix();
 
     glPopMatrix();
 }
-
-void drawEnemies() { for(int i=0;i<5;i++) drawEnemyBody(i); }
+void drawEnemies() { for(int i=0;i<8;i++) drawEnemyBody(i); }
 
 void updateCamera() {
     float rad=playerAngle*(float)M_PI/180.0f;
@@ -1356,13 +1569,33 @@ void drawGPSArrow(float cx,float cy,float tx,float tz,float r,float g,float b) {
 void drawGPS() {
     beginOrtho();
     float bx1=20,by1=490,bs=80;
-    glColor3f(0.08f,0.08f,0.12f);
-    glBegin(GL_QUADS);glVertex2f(bx1,by1);glVertex2f(bx1+bs,by1);glVertex2f(bx1+bs,by1+bs);glVertex2f(bx1,by1+bs);glEnd();
-    glColor3f(0.5f,0.5f,0.5f);glLineWidth(2);
-    glBegin(GL_LINE_LOOP);glVertex2f(bx1,by1);glVertex2f(bx1+bs,by1);glVertex2f(bx1+bs,by1+bs);glVertex2f(bx1,by1+bs);glEnd();
-    if(!playerHasTreasure) drawGPSArrow(bx1+bs/2,by1+bs/2,treasureX,treasureZ,1,0.85f,0);
-    else{glColor3f(0,1,0.3f);glLineWidth(3);glBegin(GL_LINE_STRIP);glVertex2f(bx1+20,by1+35);glVertex2f(bx1+35,by1+20);glVertex2f(bx1+60,by1+55);glEnd();}
-    drawText2D(bx1+5,by1-18,playerHasTreasure?"GOT IT!":"TREASURE",1,0.85f,0);
+    // GANTI blok GPS treasure (bx1) dengan:
+glColor3f(0.08f,0.08f,0.12f);
+glBegin(GL_QUADS);glVertex2f(bx1,by1);glVertex2f(bx1+bs,by1);glVertex2f(bx1+bs,by1+bs);glVertex2f(bx1,by1+bs);glEnd();
+glColor3f(0.5f,0.5f,0.5f);glLineWidth(2);
+glBegin(GL_LINE_LOOP);glVertex2f(bx1,by1);glVertex2f(bx1+bs,by1);glVertex2f(bx1+bs,by1+bs);glVertex2f(bx1,by1+bs);glEnd();
+
+if (!allTreasuresCollected()) {
+    // Tunjuk treasure terdekat yang belum diambil
+    float nearDist = 1e9f; int nearIdx = -1;
+    for (int i = 0; i < treasureCount; i++) {
+        if (treasureCollected[i]) continue;
+        float dx = playerX - treasureX[i], dz = playerZ - treasureZ[i];
+        float d = sqrtf(dx*dx + dz*dz);
+        if (d < nearDist) { nearDist = d; nearIdx = i; }
+    }
+    if (nearIdx >= 0)
+        drawGPSArrow(bx1+bs/2, by1+bs/2, treasureX[nearIdx], treasureZ[nearIdx], 1, 0.85f, 0);
+} else {
+    glColor3f(0,1,0.3f);glLineWidth(3);
+    glBegin(GL_LINE_STRIP);
+    glVertex2f(bx1+20,by1+35);glVertex2f(bx1+35,by1+20);glVertex2f(bx1+60,by1+55);
+    glEnd();
+}
+
+char tlabel[32];
+sprintf(tlabel, "TRSR %d/%d", treasuresHeld(), treasureCount);
+drawText2D(bx1+2, by1-18, allTreasuresCollected() ? "ALL GOT!" : tlabel, 1, 0.85f, 0);
     float bx2=110,by2=490;
     glColor3f(0.08f,0.08f,0.12f);
     glBegin(GL_QUADS);glVertex2f(bx2,by2);glVertex2f(bx2+bs,by2);glVertex2f(bx2+bs,by2+bs);glVertex2f(bx2+bs,by2+bs);glEnd();
@@ -1376,8 +1609,12 @@ void drawGPS() {
     else{sprintf(buf,"LIGHTS ON IN: %.0fs",ttl);drawText2D(300,570,buf,0.7f,0.7f,0.8f);}
     float elapsed=(float)glutGet(GLUT_ELAPSED_TIME)/1000.0f-startTime;
     sprintf(buf,"TIME: %.0fs",elapsed);drawText2D(650,570,buf,0.7f,0.7f,0.7f);
-    if(playerHasTreasure)drawText2D(330,540,"TREASURE: COLLECTED!",1,0.85f,0);
-    else drawText2D(330,540,"TREASURE: NOT YET",0.5f,0.5f,0.55f);
+char tbuf[64];
+sprintf(tbuf, "TREASURE: %d / %d", treasuresHeld(), treasureCount);
+if (allTreasuresCollected())
+    drawText2D(330, 540, tbuf, 1, 0.85f, 0);
+else
+    drawText2D(330, 540, tbuf, 0.5f, 0.5f, 0.55f);
     if(playerIsHiding)drawText2D(330,510,"HIDING",0.3f,1,0.3f);
     else if(isNearHidingSpot())drawText2D(330,510,"Press H to Hide",0.9f,0.9f,0.3f);
     if(lightsOn){
@@ -1398,28 +1635,319 @@ void drawGPS() {
     drawText2D(20,20,"WASD/Arrows:Move  H:Hide  Mouse:Turn",0.4f,0.4f,0.45f);
     endOrtho();
 }
+// ===================================================
+// HELPER: Gambar dinding maze mini untuk menu
+// ===================================================
+void drawMiniMazeWall(float x, float y, float w, float h) {
+    // Dinding batu gelap dengan lis terang
+    glColor3f(0.12f, 0.07f, 0.20f);
+    glBegin(GL_QUADS);
+    glVertex2f(x, y); glVertex2f(x+w, y);
+    glVertex2f(x+w, y+h); glVertex2f(x, y+h);
+    glEnd();
+    glColor3f(0.22f, 0.14f, 0.32f);
+    glLineWidth(0.5f);
+    glBegin(GL_LINE_LOOP);
+    glVertex2f(x, y); glVertex2f(x+w, y);
+    glVertex2f(x+w, y+h); glVertex2f(x, y+h);
+    glEnd();
+}
+void drawMenuMaze() {
+    // ── OUTER BOUNDARY ──
+    drawMiniMazeWall(390, 160, 370, 5);   // north  (z=20)
+    drawMiniMazeWall(390, 443, 370, 5);   // south  (z=-20)
+    drawMiniMazeWall(390, 160, 5, 288);   // west   (x=-20)
+    drawMiniMazeWall(755, 160, 5, 130);   // east upper (z=20 s/d -10.5)
+    drawMiniMazeWall(755, 353, 5,  90);   // east lower (z=-13.5 s/d -20)
 
+    // ── HORIZONTAL WALLS ── (z=16: screenY = 448 - 36*7.2 = 189)
+    // z=16 → screenY=188
+    drawMiniMazeWall(390, 188, 37, 5);    // wall 5:  x=-20 s/d -16
+    drawMiniMazeWall(482, 188, 111, 5);   // wall 6:  x=-10 s/d 2   | gap -16 s/d -10
+    drawMiniMazeWall(574, 188, 92,  5);   // wall 7:  x=3 s/d 13    | gap 2 s/d 8
+
+    // z=10 → screenY=230
+    drawMiniMazeWall(390, 230, 55, 5);    // wall 8:  x=-20 s/d -14 (diperbaiki)
+    drawMiniMazeWall(445, 230, 111, 5);   // wall 9:  x=-14 s/d -2  (diperbaiki)
+    drawMiniMazeWall(575, 230, 74, 5);    // wall 10: x=4 s/d 12
+
+    // z=4 → screenY=274
+    drawMiniMazeWall(390, 274, 92, 5);    // wall 11: x=-20 s/d -10 (diperbaiki)
+    drawMiniMazeWall(528, 274, 92, 5);    // wall 12: x=-5 s/d 5
+    drawMiniMazeWall(666, 274, 55, 5);    // wall 13: x=10 s/d 16   (diperbaiki)
+
+    // z=-2 → screenY=317
+    drawMiniMazeWall(390, 317, 55, 5);    // wall 14: x=-20 s/d -14
+    drawMiniMazeWall(482, 317, 92, 5);    // wall 15: x=-11 s/d -1
+    drawMiniMazeWall(610, 317, 74, 5);    // wall 16: x=4 s/d 12
+
+    // z=-8 → screenY=360
+    drawMiniMazeWall(408, 360, 74, 5);    // wall 17: x=-18 s/d -10
+    drawMiniMazeWall(556, 360, 74, 5);    // wall 18: x=-2 s/d 6
+
+    // z=-14 → screenY=404
+    drawMiniMazeWall(390, 404, 55, 5);    // wall 19: x=-20 s/d -14
+    drawMiniMazeWall(482, 404, 92, 5);    // wall 20: x=-9 s/d 1    (diperbaiki)
+
+    // ── VERTICAL WALLS ──
+    // x=-16 → screenX=427
+    drawMiniMazeWall(427, 160, 5, 29);    // wall 21: z=16 s/d 20
+    drawMiniMazeWall(427, 231, 5, 43);    // wall 22: z=4 s/d 10
+    drawMiniMazeWall(427, 318, 5, 43);    // wall 23: z=-8 s/d -2
+    drawMiniMazeWall(427, 361, 5, 43);    // wall 24: z=-20 s/d -14
+
+    // x=-4 → screenX=538
+    drawMiniMazeWall(538, 160, 5, 29);    // wall 25: z=16 s/d 20
+    drawMiniMazeWall(538, 231, 5, 43);    // wall 26: z=4 s/d 10
+    drawMiniMazeWall(538, 318, 5, 43);    // wall 27: z=-8 s/d -2
+    drawMiniMazeWall(538, 361, 5, 43);    // wall 28: z=-20 s/d -14
+
+    // x=8 → screenX=649
+    drawMiniMazeWall(649, 160, 5, 29);    // wall 29: z=16 s/d 20
+    drawMiniMazeWall(649, 231, 5, 43);    // wall 30: z=4 s/d 10
+    drawMiniMazeWall(649, 318, 5, 43);    // wall 31: z=-8 s/d -2
+
+    // x=16 → screenX=723
+    drawMiniMazeWall(723, 160, 5, 29);    // wall 32: z=16 s/d 20
+    drawMiniMazeWall(723, 231, 5, 43);    // wall 33: z=4 s/d 10    (diperbaiki)
+    drawMiniMazeWall(723, 318, 5, 43);    // wall 34: z=-8 s/d -2   (diperbaiki)
+    drawMiniMazeWall(723, 361, 5, 43);    // wall 35: z=-20 s/d -14 (baru)
+}
 void drawMenu() {
-    prepareStaticScreen(0.03f,0.03f,0.06f);
+    // Background utama: hitam keunguan
+    glDisable(GL_FOG);
+    glDisable(GL_BLEND);
+    glDisable(GL_DEPTH_TEST);
+    glClearColor(0.03f, 0.02f, 0.06f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
     beginOrtho();
-    glColor3f(0.03f,0.03f,0.06f);glBegin(GL_QUADS);glVertex2f(0,0);glVertex2f(800,0);glVertex2f(800,600);glVertex2f(0,600);glEnd();
-    float t=(float)glutGet(GLUT_ELAPSED_TIME)/1000.0f;
-    float tp=0.85f+0.15f*sinf(t*2);
-    drawTextLarge(240,510,"MAZE ESCAPE",tp,tp*0.15f,tp*0.15f);
-    drawTextLarge(185,470,"Find the treasure, then escape!",0.75f,0.75f,0.85f);
-    drawText2D(200,415,"--- HOW TO PLAY ---",0.6f,0.6f,1);
-    drawText2D(180,390,"WASD / Arrow Keys : Move",0.82f,0.82f,0.82f);
-    drawText2D(180,368,"Mouse             : Look / Turn",0.82f,0.82f,0.82f);
-    drawText2D(180,346,"H                 : Hide (near wooden crates)",0.82f,0.82f,0.82f);
-    drawText2D(180,324,"Gold GPS box      : Arrow to Treasure",1,0.85f,0);
-    drawText2D(180,302,"Green GPS box     : Arrow to Exit",0,1,0.3f);
-    drawText2D(200,265,"--- RULES ---",0.6f,0.6f,1);
-    drawText2D(180,242,"Every 40s lights come ON for 10s!",0.9f,0.25f,0.25f);
-    drawText2D(180,220,"Lights make enemies faster. Hide to stay safe!",0.9f,0.25f,0.25f);
-    drawText2D(180,198,"Avoid the humanoid enemies!",0.9f,0.4f,0.65f);
-    drawText2D(180,176,"Exit with treasure = best score!",1,0.85f,0);
-    float ba=0.5f+0.5f*sinf(t*2.5f);
-    drawTextLarge(215,80,"Press ENTER or SPACE to Start",0.2f*ba+0.1f,ba*0.85f,0.2f*ba+0.1f);
+
+    // --- BACKGROUND GELAP ---
+    glColor3f(0.03f, 0.015f, 0.055f);
+    glBegin(GL_QUADS);
+    glVertex2f(0,0); glVertex2f(800,0); glVertex2f(800,600); glVertex2f(0,600);
+    glEnd();
+
+    // --- KABUT / MIST DI BAWAH ---
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glColor4f(0.10f, 0.05f, 0.18f, 0.60f);
+    glBegin(GL_QUADS);
+    glVertex2f(0, 0); glVertex2f(800, 0); glVertex2f(800, 120); glVertex2f(0, 120);
+    glEnd();
+    glColor4f(0.12f, 0.06f, 0.20f, 0.40f);
+    glBegin(GL_QUADS);
+    glVertex2f(0, 0); glVertex2f(800, 0); glVertex2f(800, 80); glVertex2f(0, 80);
+    glEnd();
+    glDisable(GL_BLEND);
+
+    // --- MAZE MINI DI KANAN ---
+    drawMenuMaze();
+
+    // --- GLOW EXIT (hijau) di ujung kanan maze ---
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    float t = (float)glutGet(GLUT_ELAPSED_TIME) / 800.0f;
+    float pulse = 0.4f + 0.3f * sinf(t * 2.5f);
+    glColor4f(0.0f, pulse, pulse * 0.4f, 0.55f);
+    glBegin(GL_QUADS);
+    glVertex2f(752, 295); glVertex2f(770, 295);
+    glVertex2f(770, 340); glVertex2f(752, 340);
+    glEnd();
+
+    // --- GLOW TREASURE (kuning) di dalam maze ---
+    float tpulse = 0.3f + 0.25f * sinf(t * 3.0f);
+    glColor4f(tpulse * 1.5f, tpulse, 0.0f, 0.60f);
+    glBegin(GL_QUADS);
+    glVertex2f(530, 280); glVertex2f(555, 280);
+    glVertex2f(555, 300); glVertex2f(530, 300);
+    glEnd();
+
+    // --- MATA MUSUH (merah menyala) ---
+    float eye = 0.5f + 0.5f * sinf(t * 5.0f);
+    glColor4f(eye, 0.0f, 0.0f, 0.85f);
+    // Musuh 1
+    for (float ex = 477.0f; ex <= 487.0f; ex += 8.0f) {
+        glBegin(GL_QUADS);
+        glVertex2f(ex, 237); glVertex2f(ex+4, 237);
+        glVertex2f(ex+4, 241); glVertex2f(ex, 241);
+        glEnd();
+    }
+    // Musuh 2
+    glColor4f(eye * 0.8f, 0.0f, 0.0f, 0.7f);
+    for (float ex = 620.0f; ex <= 630.0f; ex += 8.0f) {
+        glBegin(GL_QUADS);
+        glVertex2f(ex, 210); glVertex2f(ex+3, 210);
+        glVertex2f(ex+3, 213); glVertex2f(ex, 213);
+        glEnd();
+    }
+    glDisable(GL_BLEND);
+
+    // --- PANEL KIRI (overlay gelap agar teks terbaca) ---
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glColor4f(0.03f, 0.01f, 0.06f, 0.82f);
+    glBegin(GL_QUADS);
+    glVertex2f(0,0); glVertex2f(370,0); glVertex2f(370,600); glVertex2f(0,600);
+    glEnd();
+    glDisable(GL_BLEND);
+
+    // --- POHON MATI KIRI (stick figure) ---
+    glColor3f(0.08f, 0.04f, 0.12f);
+    glLineWidth(4.0f);
+    glBegin(GL_LINES);
+    // Pohon 1
+    glVertex2f(20, 150); glVertex2f(40, 420);
+    glEnd();
+    glLineWidth(2.0f);
+    glBegin(GL_LINES);
+    glVertex2f(40, 320); glVertex2f(15, 275);
+    glVertex2f(40, 320); glVertex2f(65, 270);
+    glVertex2f(40, 360); glVertex2f(10, 340);
+    glEnd();
+    glLineWidth(3.5f);
+    glBegin(GL_LINES);
+    // Pohon 2 (lebih kecil)
+    glVertex2f(350, 200); glVertex2f(365, 420);
+    glEnd();
+    glLineWidth(1.5f);
+    glBegin(GL_LINES);
+    glVertex2f(358, 280); glVertex2f(340, 252);
+    glVertex2f(358, 280); glVertex2f(375, 248);
+    glEnd();
+
+    // --- NISAN / GRAVESTONES ---
+    glColor3f(0.09f, 0.05f, 0.15f);
+    // Nisan 1
+    glBegin(GL_QUADS);
+    glVertex2f(55, 420); glVertex2f(73, 420); glVertex2f(73, 450); glVertex2f(55, 450);
+    glEnd();
+    glBegin(GL_QUADS);
+    glVertex2f(50, 446); glVertex2f(78, 446); glVertex2f(78, 452); glVertex2f(50, 452);
+    glEnd();
+    // Arc kepala nisan
+    // (gunakan segmen polygon sebagai pengganti arc)
+    glBegin(GL_TRIANGLE_FAN);
+    glVertex2f(64, 420);
+    for (int a = 0; a <= 180; a += 15) {
+        float rad2 = a * (float)M_PI / 180.0f;
+        glVertex2f(64 + cosf(rad2) * 9, 420 - sinf(rad2) * 9);
+    }
+    glEnd();
+    // Nisan 2 (kecil)
+    glBegin(GL_QUADS);
+    glVertex2f(88, 430); glVertex2f(101, 430); glVertex2f(101, 452); glVertex2f(88, 452);
+    glEnd();
+    glBegin(GL_QUADS);
+    glVertex2f(84, 449); glVertex2f(105, 449); glVertex2f(105, 454); glVertex2f(84, 454);
+    glEnd();
+    glBegin(GL_TRIANGLE_FAN);
+    glVertex2f(94.5f, 430);
+    for (int a = 0; a <= 180; a += 15) {
+        float rad2 = a * (float)M_PI / 180.0f;
+        glVertex2f(94.5f + cosf(rad2) * 7, 430 - sinf(rad2) * 7);
+    }
+    glEnd();
+
+    // --- JUDUL ---
+    // "MAZE" kecil di atas
+    glColor3f(0.45f, 0.22f, 0.65f);
+    glRasterPos2f(38, 545);
+    const char* sub = "MAZE";
+    for (const char* c = sub; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
+
+    // "ESCAPE" besar
+    glColor3f(0.78f, 0.15f, 0.18f);
+    glRasterPos2f(36, 515);
+    const char* title = "ESCAPE";
+    for (const char* c = title; *c; c++) glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, *c);
+    // Ulangi untuk bold effect
+    glRasterPos2f(37, 515);
+    for (const char* c = title; *c; c++) glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, *c);
+
+    // Subtitle
+    glColor3f(0.35f, 0.18f, 0.45f);
+    glRasterPos2f(36, 496);
+    const char* sub2 = "FIND TREASURE & SURVIVE";
+    for (const char* c = sub2; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+
+    // --- GARIS PEMISAH ---
+    glColor3f(0.20f, 0.08f, 0.28f);
+    glLineWidth(0.5f);
+    glBegin(GL_LINES);
+    glVertex2f(36, 488); glVertex2f(340, 488);
+    glEnd();
+
+    // --- HOW TO PLAY ---
+    glColor3f(0.45f, 0.28f, 0.55f);
+    glRasterPos2f(36, 472);
+    const char* howLabel = "--- HOW TO PLAY ---";
+    for (const char* c = howLabel; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+
+    // Controls
+    struct { const char* key; const char* desc; float kr; float kg; float kb; } controls[] = {
+        {"WASD / Arrows",  ": Move",                    0.65f, 0.45f, 0.75f},
+        {"Mouse",          ": Look / Turn",              0.65f, 0.45f, 0.75f},
+        {"H",              ": Hide (near crates)",       0.65f, 0.45f, 0.75f},
+        {"Gold GPS box",   ": Arrow to Treasure",        0.80f, 0.65f, 0.0f},
+        {"Green GPS box",  ": Arrow to Exit",            0.0f,  0.70f, 0.30f},
+    };
+    float cy = 453.0f;
+    for (int i = 0; i < 5; i++) {
+        glColor3f(controls[i].kr, controls[i].kg, controls[i].kb);
+        glRasterPos2f(36, cy);
+        for (const char* c = controls[i].key; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+        glColor3f(0.45f, 0.35f, 0.52f);
+        glRasterPos2f(160, cy);
+        for (const char* c = controls[i].desc; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+        cy -= 17.0f;
+    }
+
+    // --- RULES ---
+    glColor3f(0.20f, 0.08f, 0.28f);
+    glLineWidth(0.5f);
+    glBegin(GL_LINES);
+    glVertex2f(36, cy - 2); glVertex2f(340, cy - 2);
+    glEnd();
+    cy -= 16.0f;
+
+    glColor3f(0.45f, 0.28f, 0.55f);
+    glRasterPos2f(36, cy);
+    const char* rulesLabel = "--- RULES ---";
+    for (const char* c = rulesLabel; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+    cy -= 17.0f;
+
+    struct { const char* line; float r, g, b; } rules[] = {
+        {"Every 40s lights come ON for 10s!", 0.80f, 0.15f, 0.15f},
+        {"Lights make enemies faster.",       0.55f, 0.40f, 0.62f},
+        {"Hide in crates to stay safe!",      0.55f, 0.40f, 0.62f},
+        {"Avoid the dark humanoid enemies!",  0.55f, 0.40f, 0.62f},
+        {"Exit WITH treasure = best score!",  0.80f, 0.65f, 0.0f},
+    };
+    for (int i = 0; i < 5; i++) {
+        glColor3f(rules[i].r, rules[i].g, rules[i].b);
+        glRasterPos2f(36, cy);
+        for (const char* c = rules[i].line; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+        cy -= 17.0f;
+    }
+
+    // --- GARIS BAWAH ---
+    glColor3f(0.20f, 0.08f, 0.28f);
+    glBegin(GL_LINES);
+    glVertex2f(36, cy - 4); glVertex2f(340, cy - 4);
+    glEnd();
+    cy -= 20.0f;
+
+    // --- TOMBOL START (berkedip) ---
+    float ba = 0.5f + 0.5f * sinf(t * 2.5f);
+    glColor3f(0.1f * ba, ba * 0.85f, 0.2f * ba);
+    glRasterPos2f(36, cy);
+    const char* startMsg = "> Press ENTER or SPACE to Start";
+    for (const char* c = startMsg; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
+
     endOrtho();
 }
 
@@ -1447,13 +1975,16 @@ void drawWin() {
     beginOrtho();
     glColor3f(0,0.04f,0.02f);glBegin(GL_QUADS);glVertex2f(0,0);glVertex2f(800,0);glVertex2f(800,600);glVertex2f(0,600);glEnd();
     if(wonWithTreasure){
-        drawTextLarge(165,420,"YOU ESCAPED WITH TREASURE!",0.3f,1,0.45f);
+        drawTextLarge(130,420,"YOU ESCAPED WITH ALL TREASURES!",0.3f,1,0.45f);
         char buf[64];sprintf(buf,"FINAL SCORE: %d",finalScore);
         drawTextLarge(255,355,buf,0.3f,1,0.3f);
     } else {
-        drawTextLarge(155,420,"You escaped... but left the treasure!",0.55f,0.8f,0.55f);
-        drawTextLarge(275,355,"SCORE: 0",0.45f,0.65f,0.45f);
-        drawText2D(210,310,"Find the treasure first for a real score!",0.7f,0.7f,0.7f);
+        char buf[64];
+        sprintf(buf,"You escaped with %d/%d treasures!", treasuresHeld(), treasureCount);
+        drawText2D(155,420,buf,0.55f,0.8f,0.55f);
+        sprintf(buf,"SCORE: %d", finalScore);
+        drawTextLarge(275,355,buf,0.45f,0.65f,0.45f);
+        drawText2D(165,310,"Collect ALL treasures for maximum score!",0.7f,0.7f,0.7f);
     }
     drawTextLarge(220,240,"R - Retry   M - Menu",0.7f,0.7f,0.7f);
     endOrtho();
