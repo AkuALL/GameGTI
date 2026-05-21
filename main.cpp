@@ -1,6 +1,9 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <mmsystem.h>
+#include <process.h> 
+#pragma comment(lib, "winmm.lib")
 #endif
 
 #include <GL/glut.h>
@@ -24,7 +27,7 @@
 #endif
 
 // ================= GAME STATE =================
-enum GameState { STATE_MENU, STATE_PLAYING, STATE_GAMEOVER, STATE_WIN };
+enum GameState { STATE_MENU, STATE_PLAYING, STATE_GAMEOVER, STATE_WIN, STATE_LEVEL_CLEAR };
 GameState gameState = STATE_MENU;
 
 // ================= PLAYER =================
@@ -39,7 +42,7 @@ float slowMultiplier = 0.45f;
 // DENGAN:
 float treasureX[3], treasureZ[3];
 bool treasureCollected[3] = {false, false, false};
-int treasureCount = 3;
+int treasureCount = 2;
 // Tambahkan fungsi ini setelah deklarasi global
 int treasuresHeld() {
     int count = 0;
@@ -193,6 +196,93 @@ float startTime = 0.0f;
 int finalScore = 0;
 bool wonWithTreasure = false;
 
+// ================= JUMPSCARE =================
+float jumpscareTimer = 0.0f;
+bool jumpscareActive = false;
+float jumpscareAlpha = 0.0f;
+float jumpscareDuration = 2.0f; // detik
+int jumpscareStartTime = 0;
+
+// ================= SOUND =================
+bool bgmPlaying = false;
+const char* currentBGM = nullptr;
+
+void stopSound() {
+#ifdef _WIN32
+    bgmPlaying = false;
+    currentBGM = nullptr;
+    PlaySoundA(NULL, NULL, 0);
+#endif
+}
+
+void resumeBGM() {
+#ifdef _WIN32
+    if (currentBGM) {
+        bgmPlaying = true;
+        PlaySoundA(currentBGM, NULL, SND_FILENAME | SND_ASYNC | SND_LOOP);
+    }
+#endif
+}
+
+// Thread untuk SFX agar tidak freeze game
+#ifdef _WIN32
+struct SFXParam { char filename[256]; };
+
+unsigned __stdcall sfxThread(void* arg) {
+    SFXParam* p = (SFXParam*)arg;
+    PlaySoundA(p->filename, NULL, SND_FILENAME | SND_SYNC);
+    delete p;
+    return 0;
+}
+#endif
+
+void playBGM(const char* filename) {
+#ifdef _WIN32
+    currentBGM = filename;
+    bgmPlaying = true;
+    PlaySoundA(filename, NULL, SND_FILENAME | SND_ASYNC | SND_LOOP);
+#endif
+}
+
+void playSFX(const char* filename) {
+#ifdef _WIN32
+    // Stop BGM dulu agar SFX terdengar jelas
+    PlaySoundA(NULL, NULL, 0);
+
+    SFXParam* p = new SFXParam();
+    strncpy(p->filename, filename, 255);
+    p->filename[255] = '\0';
+
+    HANDLE h = (HANDLE)_beginthreadex(NULL, 0, sfxThread, p, 0, NULL);
+    if (h) CloseHandle(h);
+#endif
+}
+
+// ================= LEVEL SYSTEM =================
+int currentLevel = 1;
+bool levelClearing = false;      // layar "Level Clear"
+float levelClearTimer = 0.0f;    // berapa lama layar Level Clear ditampilkan
+
+// Level 2 countdown
+float level2Countdown = 120.0f;   // detik countdown sebelum chase mode
+float level2CountdownTimer = 0.0f;
+bool chaseMode = false;           // true = timer habis, enemy kejar player
+
+// ================= MENU LEVEL SELECT =================
+int selectedLevel = 1;  // level yang dipilih di menu
+
+struct LevelConfig {
+    int    treasures;
+    float  countdown;      // 0 = tanpa batas
+    bool   hasCountdown;
+    bool   lightsChaseMode; // lampu ON = langsung chase
+};
+LevelConfig levelConfigs[3] = {
+    {2, 0.0f,   false, false}, // Easy
+    {2, 120.0f, true,  false}, // Medium
+    {3, 120.0f, true,  true }, // Hard
+};
+
 // ================= FORWARD DECLARATIONS =================
 bool checkCollision(float newX, float newZ);
 bool pathExists(float startX, float startZ, float targetX, float targetZ);
@@ -337,7 +427,19 @@ GLuint loadTexture(Image* image) {
 // ===================================================
 // RESET / INIT
 // ===================================================
-void resetGame() {
+void resetGame(int level = 1) {
+    currentLevel = level;
+    levelClearing = false;
+    levelClearTimer = 0.0f;
+    LevelConfig &cfg = levelConfigs[level - 1];
+    treasureCount    = cfg.treasures;
+    level2Countdown  = cfg.hasCountdown ? cfg.countdown : 9999.0f;
+    level2CountdownTimer = 0.0f;
+    chaseMode        = false;
+    lightsOn         = false;
+    lightsOnTimer    = 0.0f;
+    gameTimer        = 0.0f;
+    level2CountdownTimer = 0.0f;
     for (int i = 0; i < treasureCount; i++) treasureCollected[i] = false;
     srand((unsigned)time(NULL));
     memset(keyStates, 0, sizeof(keyStates));
@@ -403,6 +505,7 @@ for (int ti = 0; ti < treasureCount; ti++) {
     gameState = STATE_PLAYING;
     startTime = (float)glutGet(GLUT_ELAPSED_TIME) / 1000.0f;
     lastTime = startTime;
+    playBGM("spottheme.wav"); 
 }
 
 // ===================================================
@@ -422,18 +525,27 @@ void checkTreasurePickup() {
     for (int i = 0; i < treasureCount; i++) {
         if (!treasureCollected[i]) {
             float dx = playerX - treasureX[i], dz = playerZ - treasureZ[i];
-            if (sqrtf(dx*dx + dz*dz) < 1.0f)
+            if (sqrtf(dx*dx + dz*dz) < 1.0f) {  // ← buka {
                 treasureCollected[i] = true;
+            }  // ← tutup }
         }
     }
 }
 
 void checkExit() {
     if (playerX > 19.5f && playerZ > -13.5f && playerZ < -10.5f) {
+        if (currentLevel < 3 && allTreasuresCollected()) {
+            gameState = STATE_LEVEL_CLEAR;  // tampilkan layar pilihan
+            levelClearTimer = 0.0f;
+            return;
+        }
+        // Level 3 Hard → WIN
         wonWithTreasure = allTreasuresCollected();
-        float elapsed = (float)glutGet(GLUT_ELAPSED_TIME) / 1000.0f - startTime;
-        int held = treasuresHeld();
-        finalScore = held > 0 ? (int)(10000.0f / (elapsed + 1.0f)) * 10 * held : 0;
+        float elapsed = (float)glutGet(GLUT_ELAPSED_TIME)/1000.0f - startTime;
+        int mult = currentLevel;
+        finalScore = allTreasuresCollected()
+                     ? (int)(10000.0f/(elapsed+1.0f))*10*treasuresHeld()*mult
+                     : 0;
         gameState = STATE_WIN;
     }
 }
@@ -659,64 +771,120 @@ bool chooseEnemyPatrolTarget(Enemy &e) {
     }
     return false;
 }
-
 void updateEnemies(float dt) {
     for (int i = 0; i < 8; i++) {
         Enemy &e = enemies[i];
 
-        if (e.pathIndex >= (int)e.pathX.size()) {
-            if (!chooseEnemyPatrolTarget(e)) continue;
-        }
+        // ── CHASE MODE ──
+        if (chaseMode || lightsOn) {
+            if (playerIsHiding) {
+                goto patrol_logic;
+            }
 
-        float tx = e.pathX[e.pathIndex];
-        float tz = e.pathZ[e.pathIndex];
+            float pdx = e.x - playerX, pdz = e.z - playerZ;
+            float distToPlayer = sqrtf(pdx*pdx + pdz*pdz);
 
-        float dx = tx - e.x;
-        float dz = tz - e.z;
-        float dist = sqrtf(dx*dx + dz*dz);
+            if (e.pathIndex >= (int)e.pathX.size() || distToPlayer > 2.0f) {
+                buildEnemyPath(e, playerX, playerZ);
+            }
 
-        if (dist < 0.18f) {
-            e.pathIndex++;
-            e.stuckFrames = 0;
-            if (e.pathIndex >= (int)e.pathX.size()) {
-                chooseEnemyPatrolTarget(e);
+            float chaseSpeed = e.speed * 3.0f * dt * 60.0f;
+
+            if (!e.pathX.empty() && e.pathIndex < (int)e.pathX.size()) {
+                float tx = e.pathX[e.pathIndex];
+                float tz = e.pathZ[e.pathIndex];
+                float dx = tx - e.x, dz = tz - e.z;
+                float dist = sqrtf(dx*dx + dz*dz);
+                if (dist < 0.18f) {
+                    e.pathIndex++;
+                } else {
+                    float stepX = (dx / dist) * chaseSpeed;
+                    float stepZ = (dz / dist) * chaseSpeed;
+                    tryMoveEnemy(e, stepX, stepZ);
+                    e.angle = atan2f(dx, dz) * 180.0f / (float)M_PI;
+                }
+            }
+
+            if (distToPlayer < 0.85f && !playerIsHiding) {
+                if (!jumpscareActive) {
+                    jumpscareActive = true;
+                    jumpscareTimer  = 0.0f;
+                    jumpscareAlpha  = 0.0f;
+                    jumpscareStartTime = glutGet(GLUT_ELAPSED_TIME);
+                    playSFX("0521.wav"); 
+}
             }
             continue;
         }
 
-        float moveSpeed = e.speed * (lightsOn ? 2.0f : 1.0f) * dt * 60.0f;
+        // ── PATROL MODE ──
+        patrol_logic:
 
-        float stepX = (dx / dist) * moveSpeed;
-        float stepZ = (dz / dist) * moveSpeed;
-        float oldX = e.x;
-        float oldZ = e.z;
-
-        if (tryMoveEnemy(e, stepX, stepZ)) {
-            e.stuckFrames = 0;
-            float movedX = e.x - oldX;
-            float movedZ = e.z - oldZ;
-            if (movedX * movedX + movedZ * movedZ > 0.0001f) {
-                e.angle = atan2f(movedX, movedZ) * 180.0f / (float)M_PI;
-            }
-        } else {
-            e.stuckFrames++;
-            if (e.stuckFrames > 12) {
-                if (!buildEnemyPath(e, e.targetX, e.targetZ)) {
-                    chooseEnemyPatrolTarget(e);
-                }
-                e.stuckFrames = 0;
-            }
+        if (lightsOn && e.pathX.empty()) {
+            chooseEnemyPatrolTarget(e);
+            continue;
         }
 
-        float pdx = e.x - playerX, pdz = e.z - playerZ;
-        if (sqrtf(pdx*pdx + pdz*pdz) < 0.85f && !playerIsHiding) {
-            finalScore = 0; wonWithTreasure = false;
-            gameState = STATE_GAMEOVER;
+        if (e.pathIndex >= (int)e.pathX.size()) {
+            if (!chooseEnemyPatrolTarget(e)) continue;
+            continue;
+        }
+
+        {
+            float tx = e.pathX[e.pathIndex];
+            float tz = e.pathZ[e.pathIndex];
+            float dx = tx - e.x;
+            float dz = tz - e.z;
+            float dist = sqrtf(dx*dx + dz*dz);
+
+            if (dist < 0.18f) {
+                e.pathIndex++;
+                e.stuckFrames = 0;
+                if (e.pathIndex >= (int)e.pathX.size()) {
+                    chooseEnemyPatrolTarget(e);
+                }
+                continue;
+            }
+
+            float moveSpeed = e.speed * (lightsOn ? 2.5f : 1.0f) * dt * 60.0f;
+            float stepX = (dx / dist) * moveSpeed;
+            float stepZ = (dz / dist) * moveSpeed;
+            float oldX = e.x;
+            float oldZ = e.z;
+
+            if (tryMoveEnemy(e, stepX, stepZ)) {
+                e.stuckFrames = 0;
+                float movedX = e.x - oldX;
+                float movedZ = e.z - oldZ;
+                if (movedX * movedX + movedZ * movedZ > 0.0001f) {
+                    e.angle = atan2f(movedX, movedZ) * 180.0f / (float)M_PI;
+                }
+            } else {
+                e.stuckFrames++;
+                int stuckThreshold = lightsOn ? 6 : 12;
+                if (e.stuckFrames > stuckThreshold) {
+                    if (!buildEnemyPath(e, e.targetX, e.targetZ)) {
+                        chooseEnemyPatrolTarget(e);
+                    }
+                    e.stuckFrames = 0;
+                }
+            }
+
+            if (!playerIsHiding) {
+                float pdx = e.x - playerX, pdz = e.z - playerZ;
+                if (sqrtf(pdx*pdx + pdz*pdz) < 0.85f) {
+                    if (!jumpscareActive) {
+                        jumpscareActive = true;
+                        jumpscareTimer  = 0.0f;
+                        jumpscareAlpha  = 0.0f;
+                        jumpscareStartTime = glutGet(GLUT_ELAPSED_TIME);
+                        playSFX("0521.wav");
+                    }
+                }
+            }
         }
     }
 }
-
-
 void updateDoor(float dt) {
     float dx = playerX - exitX;
     float dz = playerZ - exitZ;
@@ -729,23 +897,38 @@ void updateDoor(float dt) {
 // LIGHT CYCLE & ATMOSPHERE
 // ===================================================
 void updateLights(float dt) {
+    if (chaseMode && lightsOnTimer >= 9999.0f) return;
+
+    gameTimer += dt;  // selalu increment
+
     if (!lightsOn) {
-        gameTimer += dt;
+        // Tunggu interval sebelum lampu menyala
         if (gameTimer >= lightCycleInterval) {
             lightsOn = true;
             lightsOnTimer = 0.0f;
             gameTimer = 0.0f;
+            if (levelConfigs[currentLevel - 1].lightsChaseMode) {
+                chaseMode = true;
+            }
         }
     } else {
+        // Hitung durasi lampu menyala
         lightsOnTimer += dt;
         if (lightsOnTimer >= lightOnDuration) {
             lightsOn = false;
             lightsOnTimer = 0.0f;
             gameTimer = 0.0f;
+            if (levelConfigs[currentLevel - 1].lightsChaseMode) {
+                chaseMode = false;
+                for (int i = 0; i < 8; i++) {
+                    enemies[i].pathX.clear();
+                    enemies[i].pathZ.clear();
+                    enemies[i].pathIndex = 0;
+                }
+            }
         }
     }
 }
-
 void updateAtmosphere(float dt) {
     breathTimer += dt * 0.8f;
     if (!lightsOn) {
@@ -758,7 +941,6 @@ void updateAtmosphere(float dt) {
         flickerIntensity = 1.0f;
     }
 }
-
 void update(int value) {
     if (gameState == STATE_PLAYING) {
         float now = (float)glutGet(GLUT_ELAPSED_TIME) / 1000.0f;
@@ -773,21 +955,49 @@ void update(int value) {
             glutTimerFunc(16, update, 0);
             return;
         }
+
+        LevelConfig &cfg = levelConfigs[currentLevel - 1];
+        if (cfg.hasCountdown && !chaseMode) {
+            level2CountdownTimer += dt;
+            if (level2CountdownTimer >= cfg.countdown) {
+                chaseMode     = true;
+                lightsOn      = true;
+                lightsOnTimer = 9999.0f;
+                gameTimer     = 0.0f;
+            }
+        }
+
         updatePlayerMovement(dt);
         updateEnemies(dt);
+
+        // Update jumpscare
+        if (jumpscareActive) {
+            float elapsed = (glutGet(GLUT_ELAPSED_TIME) - jumpscareStartTime) / 1000.0f;
+            if (elapsed < 1.0f) {
+                jumpscareAlpha = 1.0f;
+            } else {
+                jumpscareActive = false;
+                jumpscareAlpha  = 0.0f;
+                finalScore      = 0;
+                wonWithTreasure = false;
+                gameState       = STATE_GAMEOVER;
+            }
+        }
+
         if (gameState != STATE_PLAYING) {
             glutPostRedisplay();
             glutTimerFunc(16, update, 0);
             return;
         }
-        updateDoor(dt); 
+
+        updateDoor(dt);
         checkTreasurePickup();
         checkExit();
-    }
+    }   // ← tutup if (gameState == STATE_PLAYING)
+
     glutPostRedisplay();
     glutTimerFunc(16, update, 0);
 }
-
 // ===================================================
 // INPUT SYSTEMS
 // ===================================================
@@ -875,17 +1085,38 @@ void updatePlayerMovement(float dt) {
         movePlayer(forward, strafe);
     }
 }
-
 void keyboard(unsigned char key, int x, int y) {
-    if (gameState == STATE_MENU) {
-        if (key == 13 || key == ' ') resetGame();
+    // ── LEVEL CLEAR: pilih lanjut atau menu ──
+    if (gameState == STATE_LEVEL_CLEAR) {
+        if (key == 'n' || key == 'N') {
+            resetGame(currentLevel + 1);  // lanjut ke level berikutnya
+        }
+        if (key == 'm' || key == 'M') {
+            gameState = STATE_MENU;
+            glutPostRedisplay();
+        }
         return;
     }
+
+    if (gameState == STATE_MENU) {
+        if (key == '1') { selectedLevel = 1; glutPostRedisplay(); return; }
+        if (key == '2') { selectedLevel = 2; glutPostRedisplay(); return; }
+        if (key == '3') { selectedLevel = 3; glutPostRedisplay(); return; }
+        if (key == 13 || key == ' ') {
+            resetGame(selectedLevel);
+        }
+        return;
+    }
+
     if (gameState == STATE_GAMEOVER || gameState == STATE_WIN) {
-        if (key == 'r' || key == 'R') resetGame();
+        if (key == 'r' || key == 'R') {
+            resetGame(currentLevel);  // retry di level yang sama
+        }
         if (key == 'm' || key == 'M') gameState = STATE_MENU;
         return;
     }
+
+    // STATE_PLAYING
     switch (key) {
         case 'h': case 'H':
             if (isNearHidingSpot()) playerIsHiding = !playerIsHiding;
@@ -900,7 +1131,6 @@ void keyboard(unsigned char key, int x, int y) {
     }
     glutPostRedisplay();
 }
-
 void keyboardUp(unsigned char key, int x, int y) {
     (void)x; (void)y;
     int moveKey = movementKeyIndex(key);
@@ -1557,6 +1787,93 @@ void prepareStaticScreen(float r, float g, float b) {
     glLoadIdentity();
 }
 
+
+void drawLevelClear() {
+    prepareStaticScreen(0, 0.05f, 0.03f);
+    beginOrtho();
+
+    // Background
+    glColor3f(0, 0.05f, 0.03f);
+    glBegin(GL_QUADS);
+    glVertex2f(0,0); glVertex2f(800,0); glVertex2f(800,600); glVertex2f(0,600);
+    glEnd();
+
+    float t = (float)glutGet(GLUT_ELAPSED_TIME) / 1000.0f;
+    float p = 0.7f + 0.3f * sinf(t * 4.0f);
+
+    // Judul
+    if (currentLevel == 1) {
+        drawTextLarge(250, 430, "LEVEL 1- EASY SELESAI!", 0.2f, p, 0.4f);
+    } else if (currentLevel == 2) {
+        drawTextLarge(220, 430, "LEVEL 2-MEDIUM SELESAI!", 0.2f, p, 0.4f);
+    }
+
+    // Garis pemisah
+    glColor3f(0.1f, 0.4f, 0.2f);
+    glBegin(GL_LINES);
+    glVertex2f(200, 395); glVertex2f(600, 395);
+    glEnd();
+
+    // Teks pilihan
+    drawText2D(330, 365, "Lanjutkan?", 0.7f, 0.9f, 0.7f);
+
+    // ── TOMBOL: NEXT LEVEL ──
+    float btnW = 220, btnH = 50;
+    float btn1x = 140, btn1y = 280;
+
+    glColor3f(0.10f, 0.40f, 0.15f);
+    glBegin(GL_QUADS);
+    glVertex2f(btn1x, btn1y); glVertex2f(btn1x+btnW, btn1y);
+    glVertex2f(btn1x+btnW, btn1y+btnH); glVertex2f(btn1x, btn1y+btnH);
+    glEnd();
+    glColor3f(0.3f, p, 0.4f);
+    glLineWidth(2.0f);
+    glBegin(GL_LINE_LOOP);
+    glVertex2f(btn1x, btn1y); glVertex2f(btn1x+btnW, btn1y);
+    glVertex2f(btn1x+btnW, btn1y+btnH); glVertex2f(btn1x, btn1y+btnH);
+    glEnd();
+    glColor3f(0.8f, 1.0f, 0.8f);
+    glRasterPos2f(btn1x + 18, btn1y + 20);
+    const char* nextMsg = (currentLevel == 1) ? "N - Next: Level 2" : "N - Next: Level 3";
+    for (const char* c = nextMsg; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
+
+    // ── TOMBOL: MAIN MENU ──
+    float btn2x = 440, btn2y = 280;
+
+    glColor3f(0.12f, 0.08f, 0.30f);
+    glBegin(GL_QUADS);
+    glVertex2f(btn2x, btn2y); glVertex2f(btn2x+btnW, btn2y);
+    glVertex2f(btn2x+btnW, btn2y+btnH); glVertex2f(btn2x, btn2y+btnH);
+    glEnd();
+    glColor3f(0.4f, 0.3f, p);
+    glLineWidth(2.0f);
+    glBegin(GL_LINE_LOOP);
+    glVertex2f(btn2x, btn2y); glVertex2f(btn2x+btnW, btn2y);
+    glVertex2f(btn2x+btnW, btn2y+btnH); glVertex2f(btn2x, btn2y+btnH);
+    glEnd();
+    glColor3f(0.75f, 0.70f, 1.0f);
+    glRasterPos2f(btn2x + 35, btn2y + 20);
+    const char* menuMsg = "M - Main Menu";
+    for (const char* c = menuMsg; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
+
+    // Info level berikutnya
+    glColor3f(0.5f, 0.7f, 0.5f);
+    glRasterPos2f(230, 245);
+    const char* info = (currentLevel == 1)
+        ? "Level 2: Timer 2 menit! Habis = semua musuh kejar!"
+        : "Level 3: 3 Harta. Timer 2 menit! Habis = semua musuh kejar!";
+    for (const char* c = info; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+
+    // Hint keyboard
+    float ba = 0.5f + 0.5f * sinf(t * 3.0f);
+    glColor3f(ba * 0.4f, ba * 0.8f, ba * 0.4f);
+    glRasterPos2f(320, 200);
+    const char* hint = "Press N or M";
+    for (const char* c = hint; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
+
+    endOrtho();
+}
+
 void drawGPSArrow(float cx,float cy,float tx,float tz,float r,float g,float b) {
     float dx=tx-playerX,dz=tz-playerZ;
     float arrowAngle=atan2f(dx,dz)*180.0f/(float)M_PI-playerAngle;
@@ -1565,7 +1882,118 @@ void drawGPSArrow(float cx,float cy,float tx,float tz,float r,float g,float b) {
     glBegin(GL_QUADS);glVertex2f(-3,-8);glVertex2f(3,-8);glVertex2f(3,-22);glVertex2f(-3,-22);glEnd();
     glPopMatrix();
 }
+void drawJumpscare() {
+    if (!jumpscareActive) return;
 
+    float elapsed = (glutGet(GLUT_ELAPSED_TIME) - jumpscareStartTime) / 1000.0f;
+    float t = (float)glutGet(GLUT_ELAPSED_TIME) / 500.0f;
+
+    float cx = 400, cy = 300;
+
+    // ── ZOOM: loncat super cepat dalam 0.15 detik ──
+    float zoomT = elapsed / 0.15f;
+    if (zoomT > 1.0f) zoomT = 1.0f;
+    // Overshoot: melebihi target lalu balik sedikit (efek "lompat")
+    float bounce = zoomT < 0.7f
+        ? zoomT / 0.7f                          // naik cepat
+        : 1.0f + (1.0f - zoomT/1.0f) * 0.15f;  // sedikit overshoot
+    float size = 20.0f + bounce * 310.0f;        // dari kecil banget ke SANGAT besar
+
+    // ── SHAKE: kencang & konstan sepanjang durasi ──
+    float shakeAmp = (elapsed < 0.15f) ? 0.0f : 18.0f; // shake mulai setelah zoom
+    float shakeX = (rand() % (int)(shakeAmp * 2 + 1) - (int)shakeAmp);
+    float shakeY = (rand() % (int)(shakeAmp * 2 + 1) - (int)shakeAmp);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // ── FLASH PUTIH seketika saat muncul ──
+    if (elapsed < 0.08f) {
+        float flashAlpha = 1.0f - (elapsed / 0.08f);
+        glColor4f(1.0f, 1.0f, 1.0f, flashAlpha);
+        glBegin(GL_QUADS);
+        glVertex2f(0,0); glVertex2f(800,0);
+        glVertex2f(800,600); glVertex2f(0,600);
+        glEnd();
+    }
+
+    // ── OVERLAY MERAH ──
+    glColor4f(0.9f, 0.0f, 0.0f, jumpscareAlpha * 0.90f);
+    glBegin(GL_QUADS);
+    glVertex2f(0,0); glVertex2f(800,0);
+    glVertex2f(800,600); glVertex2f(0,600);
+    glEnd();
+
+    // ── KEPALA — zoom in dari tengah ──
+    glColor4f(0.05f, 0.02f, 0.08f, jumpscareAlpha);
+    glBegin(GL_TRIANGLE_FAN);
+    glVertex2f(cx + shakeX, cy + shakeY);
+    for (int s = 0; s <= 20; s++) {
+        float a = s * 2 * (float)M_PI / 20;
+        glVertex2f(cx + shakeX + cosf(a) * size,
+                   cy + shakeY + sinf(a) * size * 1.2f);
+    }
+    glEnd();
+
+    // ── MATA — lebih besar & lebih glow ──
+    float eyeGlow = 0.85f + 0.15f * sinf(t * 15);
+    glColor4f(1.0f, 0.0f, 0.0f, jumpscareAlpha * eyeGlow);
+    for (int eye = -1; eye <= 1; eye += 2) {
+        glBegin(GL_TRIANGLE_FAN);
+        glVertex2f(cx + shakeX + eye * size * 0.32f,
+                   cy + shakeY - size * 0.12f);
+        for (int s = 0; s <= 16; s++) {
+            float a = s * 2 * (float)M_PI / 16;
+            float r = size * 0.22f; // mata lebih besar
+            glVertex2f(cx + shakeX + eye * size * 0.32f + cosf(a) * r,
+                       cy + shakeY - size * 0.12f + sinf(a) * r * 0.85f);
+        }
+        glEnd();
+    }
+
+    // ── GLOW MERAH DI MATA (halo luar) ──
+    glColor4f(1.0f, 0.0f, 0.0f, jumpscareAlpha * 0.35f);
+    for (int eye = -1; eye <= 1; eye += 2) {
+        glBegin(GL_TRIANGLE_FAN);
+        glVertex2f(cx + shakeX + eye * size * 0.32f,
+                   cy + shakeY - size * 0.12f);
+        for (int s = 0; s <= 16; s++) {
+            float a = s * 2 * (float)M_PI / 16;
+            float r = size * 0.38f;
+            glVertex2f(cx + shakeX + eye * size * 0.32f + cosf(a) * r,
+                       cy + shakeY - size * 0.12f + sinf(a) * r);
+        }
+        glEnd();
+    }
+
+    // ── MULUT LEBAR ──
+    glColor4f(0.0f, 0.0f, 0.0f, jumpscareAlpha);
+    glBegin(GL_TRIANGLE_FAN);
+    glVertex2f(cx + shakeX, cy + shakeY + size * 0.28f);
+    for (int s = 0; s <= 14; s++) {
+        float a = s * (float)M_PI / 14;
+        glVertex2f(cx + shakeX + cosf(a) * size * 0.45f,
+                   cy + shakeY + size * 0.28f + sinf(a) * size * 0.30f);
+    }
+    glEnd();
+
+    // ── TEKS "FOUND YOU" — muncul langsung sejak 0.15s ──
+    if (elapsed > 0.15f) {
+        // Shadow teks
+        glColor4f(0.0f, 0.0f, 0.0f, jumpscareAlpha);
+        glRasterPos2f(288 + shakeX, 157 + shakeY);
+        const char* msg = "FOUND YOU";
+        for (const char* c = msg; *c; c++)
+            glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, *c);
+        // Teks utama putih
+        glColor4f(1.0f, 1.0f, 1.0f, jumpscareAlpha);
+        glRasterPos2f(285 + shakeX, 160 + shakeY);
+        for (const char* c = msg; *c; c++)
+            glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, *c);
+    }
+
+    glDisable(GL_BLEND);
+}
 void drawGPS() {
     beginOrtho();
     float bx1=20,by1=490,bs=80;
@@ -1575,6 +2003,29 @@ glBegin(GL_QUADS);glVertex2f(bx1,by1);glVertex2f(bx1+bs,by1);glVertex2f(bx1+bs,b
 glColor3f(0.5f,0.5f,0.5f);glLineWidth(2);
 glBegin(GL_LINE_LOOP);glVertex2f(bx1,by1);glVertex2f(bx1+bs,by1);glVertex2f(bx1+bs,by1+bs);glVertex2f(bx1,by1+bs);glEnd();
 
+// ── HUD LEVEL 2: COUNTDOWN TIMER ──
+LevelConfig &hcfg = levelConfigs[currentLevel - 1];
+if (hcfg.hasCountdown) {
+    char cbuf[64];
+    if (!chaseMode) {
+        // Countdown belum habis — tampilkan timer normal
+        float remaining = level2Countdown - level2CountdownTimer;
+        sprintf(cbuf, "COUNTDOWN: %.0fs", remaining);
+        float danger = 1.0f - (remaining / level2Countdown);
+        drawTextLarge(270, 540, cbuf, 0.5f + danger*0.5f, (1.0f-danger)*0.6f, 0);
+        if (remaining <= 10.0f) {
+            float blink = (sinf((float)glutGet(GLUT_ELAPSED_TIME)/150.0f) > 0) ? 1.0f : 0.0f;
+            if (blink > 0.5f) drawTextLarge(185, 480, "!! MUSUH AKAN MENYERANG SEGERA !!", 1, 0.1f, 0);
+        }
+    } else {
+        // ✅ Chase mode PERMANEN (countdown habis) — baru tampilkan ini
+        drawTextLarge(230, 540, "!! CHASE MODE - LARIII !!", 1.0f, 0.05f, 0.05f);
+    }
+}
+// ── INDIKATOR LEVEL ──
+char lvlbuf[16];
+sprintf(lvlbuf, "LEVEL %d", currentLevel);
+drawText2D(710, 570, lvlbuf, 0.6f, 0.6f, 0.9f);
 if (!allTreasuresCollected()) {
     // Tunjuk treasure terdekat yang belum diambil
     float nearDist = 1e9f; int nearIdx = -1;
@@ -1598,7 +2049,7 @@ sprintf(tlabel, "TRSR %d/%d", treasuresHeld(), treasureCount);
 drawText2D(bx1+2, by1-18, allTreasuresCollected() ? "ALL GOT!" : tlabel, 1, 0.85f, 0);
     float bx2=110,by2=490;
     glColor3f(0.08f,0.08f,0.12f);
-    glBegin(GL_QUADS);glVertex2f(bx2,by2);glVertex2f(bx2+bs,by2);glVertex2f(bx2+bs,by2+bs);glVertex2f(bx2+bs,by2+bs);glEnd();
+    glBegin(GL_QUADS);glVertex2f(bx2,by2);glVertex2f(bx2+bs,by2);glVertex2f(bx2+bs,by2+bs);glVertex2f(bx2,by2+bs);glEnd();
     glColor3f(0.5f,0.5f,0.5f);glLineWidth(2);
     glBegin(GL_LINE_LOOP);glVertex2f(bx2,by2);glVertex2f(bx2+bs,by2);glVertex2f(bx2+bs,by2+bs);glVertex2f(bx2,by2+bs);glEnd();
     drawGPSArrow(bx2+bs/2,by2+bs/2,exitX,exitZ,0,1,0.3f);
@@ -1608,20 +2059,14 @@ drawText2D(bx1+2, by1-18, allTreasuresCollected() ? "ALL GOT!" : tlabel, 1, 0.85
     if(lightsOn){sprintf(buf,"LIGHTS OFF IN: %.1fs",ttl);drawText2D(300,570,buf,1,0.3f,0.3f);}
     else{sprintf(buf,"LIGHTS ON IN: %.0fs",ttl);drawText2D(300,570,buf,0.7f,0.7f,0.8f);}
     float elapsed=(float)glutGet(GLUT_ELAPSED_TIME)/1000.0f-startTime;
-    sprintf(buf,"TIME: %.0fs",elapsed);drawText2D(650,570,buf,0.7f,0.7f,0.7f);
-char tbuf[64];
-sprintf(tbuf, "TREASURE: %d / %d", treasuresHeld(), treasureCount);
-if (allTreasuresCollected())
-    drawText2D(330, 540, tbuf, 1, 0.85f, 0);
-else
-    drawText2D(330, 540, tbuf, 0.5f, 0.5f, 0.55f);
+    sprintf(buf,"TIME: %.0fs",elapsed);drawText2D(500,570,buf,0.7f,0.7f,0.7f);
     if(playerIsHiding)drawText2D(330,510,"HIDING",0.3f,1,0.3f);
     else if(isNearHidingSpot())drawText2D(330,510,"Press H to Hide",0.9f,0.9f,0.3f);
     if(lightsOn){
         glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
         glColor4f(1,0.85f,0,0.06f);glBegin(GL_QUADS);glVertex2f(0,0);glVertex2f(800,0);glVertex2f(800,600);glVertex2f(0,600);glEnd();
         glDisable(GL_BLEND);
-        if(!playerIsHiding)drawTextLarge(185,470,"!! LIGHTS ON - ENEMIES FASTER !!",1,0.1f,0.1f);
+        if(!playerIsHiding)drawTextLarge(185,470,"!! LIGHTS ON - HIDE !!",1,0.1f,0.1f);
         else drawTextLarge(270,470,"STAY HIDDEN!",0.2f,1,0.2f);
     } else {
         glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
@@ -1633,6 +2078,7 @@ else
         glDisable(GL_BLEND);
     }
     drawText2D(20,20,"WASD/Arrows:Move  H:Hide  Mouse:Turn",0.4f,0.4f,0.45f);
+    drawJumpscare();
     endOrtho();
 }
 // ===================================================
@@ -1714,7 +2160,6 @@ void drawMenuMaze() {
     drawMiniMazeWall(723, 361, 5, 43);    // wall 35: z=-20 s/d -14 (baru)
 }
 void drawMenu() {
-    // Background utama: hitam keunguan
     glDisable(GL_FOG);
     glDisable(GL_BLEND);
     glDisable(GL_DEPTH_TEST);
@@ -1725,29 +2170,21 @@ void drawMenu() {
 
     beginOrtho();
 
-    // --- BACKGROUND GELAP ---
     glColor3f(0.03f, 0.015f, 0.055f);
     glBegin(GL_QUADS);
     glVertex2f(0,0); glVertex2f(800,0); glVertex2f(800,600); glVertex2f(0,600);
     glEnd();
 
-    // --- KABUT / MIST DI BAWAH ---
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glColor4f(0.10f, 0.05f, 0.18f, 0.60f);
     glBegin(GL_QUADS);
     glVertex2f(0, 0); glVertex2f(800, 0); glVertex2f(800, 120); glVertex2f(0, 120);
     glEnd();
-    glColor4f(0.12f, 0.06f, 0.20f, 0.40f);
-    glBegin(GL_QUADS);
-    glVertex2f(0, 0); glVertex2f(800, 0); glVertex2f(800, 80); glVertex2f(0, 80);
-    glEnd();
     glDisable(GL_BLEND);
 
-    // --- MAZE MINI DI KANAN ---
     drawMenuMaze();
 
-    // --- GLOW EXIT (hijau) di ujung kanan maze ---
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     float t = (float)glutGet(GLUT_ELAPSED_TIME) / 800.0f;
@@ -1757,26 +2194,20 @@ void drawMenu() {
     glVertex2f(752, 295); glVertex2f(770, 295);
     glVertex2f(770, 340); glVertex2f(752, 340);
     glEnd();
-
-    // --- GLOW TREASURE (kuning) di dalam maze ---
     float tpulse = 0.3f + 0.25f * sinf(t * 3.0f);
     glColor4f(tpulse * 1.5f, tpulse, 0.0f, 0.60f);
     glBegin(GL_QUADS);
     glVertex2f(530, 280); glVertex2f(555, 280);
     glVertex2f(555, 300); glVertex2f(530, 300);
     glEnd();
-
-    // --- MATA MUSUH (merah menyala) ---
     float eye = 0.5f + 0.5f * sinf(t * 5.0f);
     glColor4f(eye, 0.0f, 0.0f, 0.85f);
-    // Musuh 1
     for (float ex = 477.0f; ex <= 487.0f; ex += 8.0f) {
         glBegin(GL_QUADS);
         glVertex2f(ex, 237); glVertex2f(ex+4, 237);
         glVertex2f(ex+4, 241); glVertex2f(ex, 241);
         glEnd();
     }
-    // Musuh 2
     glColor4f(eye * 0.8f, 0.0f, 0.0f, 0.7f);
     for (float ex = 620.0f; ex <= 630.0f; ex += 8.0f) {
         glBegin(GL_QUADS);
@@ -1786,7 +2217,6 @@ void drawMenu() {
     }
     glDisable(GL_BLEND);
 
-    // --- PANEL KIRI (overlay gelap agar teks terbaca) ---
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glColor4f(0.03f, 0.01f, 0.06f, 0.82f);
@@ -1795,11 +2225,10 @@ void drawMenu() {
     glEnd();
     glDisable(GL_BLEND);
 
-    // --- POHON MATI KIRI (stick figure) ---
+    // Pohon & nisan
     glColor3f(0.08f, 0.04f, 0.12f);
     glLineWidth(4.0f);
     glBegin(GL_LINES);
-    // Pohon 1
     glVertex2f(20, 150); glVertex2f(40, 420);
     glEnd();
     glLineWidth(2.0f);
@@ -1808,165 +2237,279 @@ void drawMenu() {
     glVertex2f(40, 320); glVertex2f(65, 270);
     glVertex2f(40, 360); glVertex2f(10, 340);
     glEnd();
-    glLineWidth(3.5f);
-    glBegin(GL_LINES);
-    // Pohon 2 (lebih kecil)
-    glVertex2f(350, 200); glVertex2f(365, 420);
-    glEnd();
-    glLineWidth(1.5f);
-    glBegin(GL_LINES);
-    glVertex2f(358, 280); glVertex2f(340, 252);
-    glVertex2f(358, 280); glVertex2f(375, 248);
-    glEnd();
 
-    // --- NISAN / GRAVESTONES ---
-    glColor3f(0.09f, 0.05f, 0.15f);
-    // Nisan 1
-    glBegin(GL_QUADS);
-    glVertex2f(55, 420); glVertex2f(73, 420); glVertex2f(73, 450); glVertex2f(55, 450);
-    glEnd();
-    glBegin(GL_QUADS);
-    glVertex2f(50, 446); glVertex2f(78, 446); glVertex2f(78, 452); glVertex2f(50, 452);
-    glEnd();
-    // Arc kepala nisan
-    // (gunakan segmen polygon sebagai pengganti arc)
-    glBegin(GL_TRIANGLE_FAN);
-    glVertex2f(64, 420);
-    for (int a = 0; a <= 180; a += 15) {
-        float rad2 = a * (float)M_PI / 180.0f;
-        glVertex2f(64 + cosf(rad2) * 9, 420 - sinf(rad2) * 9);
-    }
-    glEnd();
-    // Nisan 2 (kecil)
-    glBegin(GL_QUADS);
-    glVertex2f(88, 430); glVertex2f(101, 430); glVertex2f(101, 452); glVertex2f(88, 452);
-    glEnd();
-    glBegin(GL_QUADS);
-    glVertex2f(84, 449); glVertex2f(105, 449); glVertex2f(105, 454); glVertex2f(84, 454);
-    glEnd();
-    glBegin(GL_TRIANGLE_FAN);
-    glVertex2f(94.5f, 430);
-    for (int a = 0; a <= 180; a += 15) {
-        float rad2 = a * (float)M_PI / 180.0f;
-        glVertex2f(94.5f + cosf(rad2) * 7, 430 - sinf(rad2) * 7);
-    }
-    glEnd();
-
-    // --- JUDUL ---
-    // "MAZE" kecil di atas
+    // ── JUDUL ──
     glColor3f(0.45f, 0.22f, 0.65f);
-    glRasterPos2f(38, 545);
+    glRasterPos2f(38, 570);
     const char* sub = "MAZE";
     for (const char* c = sub; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
-
-    // "ESCAPE" besar
     glColor3f(0.78f, 0.15f, 0.18f);
-    glRasterPos2f(36, 515);
+    glRasterPos2f(36, 545);
     const char* title = "ESCAPE";
     for (const char* c = title; *c; c++) glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, *c);
-    // Ulangi untuk bold effect
-    glRasterPos2f(37, 515);
+    glRasterPos2f(37, 545);
     for (const char* c = title; *c; c++) glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, *c);
 
-    // Subtitle
-    glColor3f(0.35f, 0.18f, 0.45f);
-    glRasterPos2f(36, 496);
-    const char* sub2 = "FIND TREASURE & SURVIVE";
-    for (const char* c = sub2; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+    // ── PILIH LEVEL ──
+    glColor3f(0.55f, 0.35f, 0.70f);
+    glRasterPos2f(36, 518);
+    const char* lsLabel = "--- PILIH LEVEL ---";
+    for (const char* c = lsLabel; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
 
-    // --- GARIS PEMISAH ---
+    // ── KOTAK LEVEL 1 ──
+    float boxW = 130, boxH = 40;
+    float box1x = 36, box1y = 468;
+    if (selectedLevel == 1) glColor3f(0.25f, 0.55f, 0.25f);
+    else                    glColor3f(0.10f, 0.20f, 0.12f);
+    glBegin(GL_QUADS);
+    glVertex2f(box1x, box1y); glVertex2f(box1x+boxW, box1y);
+    glVertex2f(box1x+boxW, box1y+boxH); glVertex2f(box1x, box1y+boxH);
+    glEnd();
+    glColor3f(0.4f, 0.8f, 0.4f); glLineWidth(1.5f);
+    glBegin(GL_LINE_LOOP);
+    glVertex2f(box1x, box1y); glVertex2f(box1x+boxW, box1y);
+    glVertex2f(box1x+boxW, box1y+boxH); glVertex2f(box1x, box1y+boxH);
+    glEnd();
+    if (selectedLevel == 1) glColor3f(0.9f, 1.0f, 0.9f);
+    else                    glColor3f(0.5f, 0.7f, 0.5f);
+    glRasterPos2f(box1x + 30, box1y + 20);
+    const char* lv1 = "LEVEL 1";
+    for (const char* c = lv1; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
+    glColor3f(0.4f, 0.6f, 0.4f);
+    glRasterPos2f(box1x + 20, box1y + 8);
+    const char* lv1desc = "Easy - 2 harta";
+    for (const char* c = lv1desc; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+
+    // ── KOTAK LEVEL 2 ──
+    float box2x = 180, box2y = 468;
+    if (selectedLevel == 2) glColor3f(0.55f, 0.18f, 0.12f);
+    else                    glColor3f(0.20f, 0.08f, 0.06f);
+    glBegin(GL_QUADS);
+    glVertex2f(box2x, box2y); glVertex2f(box2x+boxW, box2y);
+    glVertex2f(box2x+boxW, box2y+boxH); glVertex2f(box2x, box2y+boxH);
+    glEnd();
+    glColor3f(0.9f, 0.3f, 0.3f); glLineWidth(1.5f);
+    glBegin(GL_LINE_LOOP);
+    glVertex2f(box2x, box2y); glVertex2f(box2x+boxW, box2y);
+    glVertex2f(box2x+boxW, box2y+boxH); glVertex2f(box2x, box2y+boxH);
+    glEnd();
+    if (selectedLevel == 2) glColor3f(1.0f, 0.85f, 0.85f);
+    else                    glColor3f(0.7f, 0.4f, 0.4f);
+    glRasterPos2f(box2x + 30, box2y + 20);
+    const char* lv2 = "LEVEL 2";
+    for (const char* c = lv2; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
+    glColor3f(0.6f, 0.35f, 0.35f);
+    glRasterPos2f(box2x + 4, box2y + 8);
+    const char* lv2desc = "Medium - timer 2 mnt";
+    for (const char* c = lv2desc; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+
+    // ── KOTAK LEVEL 3 (SULIT) ──
+    float box3x = 36, box3y = 418;
+    if (selectedLevel == 3) glColor3f(0.50f, 0.10f, 0.10f);
+    else                    glColor3f(0.18f, 0.05f, 0.05f);
+    glBegin(GL_QUADS);
+    glVertex2f(box3x, box3y); glVertex2f(box3x+boxW*2+14, box3y);
+    glVertex2f(box3x+boxW*2+14, box3y+boxH); glVertex2f(box3x, box3y+boxH);
+    glEnd();
+    glColor3f(1.0f, 0.2f, 0.2f); glLineWidth(1.5f);
+    glBegin(GL_LINE_LOOP);
+    glVertex2f(box3x, box3y); glVertex2f(box3x+boxW*2+14, box3y);
+    glVertex2f(box3x+boxW*2+14, box3y+boxH); glVertex2f(box3x, box3y+boxH);
+    glEnd();
+    if (selectedLevel == 3) glColor3f(1.0f, 0.7f, 0.7f);
+    else                    glColor3f(0.6f, 0.3f, 0.3f);
+    glRasterPos2f(box3x + 100, box3y + 20);  // teks judul di tengah atas
+    const char* lv3 = "LEVEL 3";
+    for (const char* c = lv3; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
+    glColor3f(0.55f, 0.25f, 0.25f);
+    glRasterPos2f(box3x + 95, box3y + 8);  // teks deskripsi di bawahnya
+    const char* lv3desc = "Hard - 3 harta";
+    for (const char* c = lv3desc; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+
+    // ── GARIS + DESKRIPSI LEVEL YANG DIPILIH ──
     glColor3f(0.20f, 0.08f, 0.28f);
     glLineWidth(0.5f);
     glBegin(GL_LINES);
-    glVertex2f(36, 488); glVertex2f(340, 488);
+    glVertex2f(36, 412); glVertex2f(340, 412);
     glEnd();
 
-    // --- HOW TO PLAY ---
-    glColor3f(0.45f, 0.28f, 0.55f);
-    glRasterPos2f(36, 472);
-    const char* howLabel = "--- HOW TO PLAY ---";
+    if (selectedLevel == 1) {
+        glColor3f(0.45f, 0.75f, 0.45f);
+        glRasterPos2f(36, 398);
+        const char* d1 = "Kumpulkan 2 harta lalu cari pintu keluar.";
+        for (const char* c = d1; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+        glColor3f(0.35f, 0.55f, 0.35f);
+        glRasterPos2f(36, 384);
+        const char* d2 = "Lampu menyala tiap 40 detik (selama 10 detik).";
+        for (const char* c = d2; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+    } else if (selectedLevel == 2) {
+        glColor3f(0.85f, 0.45f, 0.35f);
+        glRasterPos2f(36, 398);
+        const char* d1 = "Timer 2 menit, habis = semua musuh mengejar!";
+        for (const char* c = d1; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+        glColor3f(0.65f, 0.35f, 0.25f);
+        glRasterPos2f(36, 384);
+        const char* d2 = "Kumpulkan 2 harta sebelum waktu habis.";
+        for (const char* c = d2; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+    } else {
+        glColor3f(1.0f, 0.35f, 0.35f);
+        glRasterPos2f(36, 398);
+        const char* d1 = "Timer 2 menit, habis = semua musuh mengejar!";
+        for (const char* c = d1; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+        glColor3f(0.75f, 0.25f, 0.25f);
+        glRasterPos2f(36, 384);
+        const char* d2 = "Kumpulkan 3 harta. Mode paling sulit!";
+        for (const char* c = d2; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+    }
+
+    // ── SUBTITLE ──
+    glColor3f(0.55f, 0.35f, 0.70f);
+    glRasterPos2f(36, 368);
+    const char* findTreasure = "CARI HARTA & KELUAR!";
+    for (const char* c = findTreasure; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+
+    // ── GARIS PEMISAH ──
+    glColor3f(0.20f, 0.08f, 0.28f);
+    glLineWidth(0.5f);
+    glBegin(GL_LINES);
+    glVertex2f(36, 360); glVertex2f(340, 360);
+    glEnd();
+
+    // ── CARA BERMAIN ──
+    glColor3f(0.55f, 0.35f, 0.70f);
+    glRasterPos2f(36, 346);
+    const char* howLabel = "--- CARA BERMAIN ---";
     for (const char* c = howLabel; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
 
-    // Controls
-    struct { const char* key; const char* desc; float kr; float kg; float kb; } controls[] = {
-        {"WASD / Arrows",  ": Move",                    0.65f, 0.45f, 0.75f},
-        {"Mouse",          ": Look / Turn",              0.65f, 0.45f, 0.75f},
-        {"H",              ": Hide (near crates)",       0.65f, 0.45f, 0.75f},
-        {"Gold GPS box",   ": Arrow to Treasure",        0.80f, 0.65f, 0.0f},
-        {"Green GPS box",  ": Arrow to Exit",            0.0f,  0.70f, 0.30f},
-    };
-    float cy = 453.0f;
-    for (int i = 0; i < 5; i++) {
-        glColor3f(controls[i].kr, controls[i].kg, controls[i].kb);
-        glRasterPos2f(36, cy);
-        for (const char* c = controls[i].key; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
-        glColor3f(0.45f, 0.35f, 0.52f);
-        glRasterPos2f(160, cy);
-        for (const char* c = controls[i].desc; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
-        cy -= 17.0f;
-    }
+    glColor3f(0.85f, 0.85f, 0.85f);
+    glRasterPos2f(36, 331);
+    const char* h1a = "WASD / Panah";
+    for (const char* c = h1a; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+    glColor3f(0.55f, 0.55f, 0.60f);
+    glRasterPos2f(175, 331);
+    const char* h1b = ": Bergerak";
+    for (const char* c = h1b; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
 
-    // --- RULES ---
+    glColor3f(0.85f, 0.85f, 0.85f);
+    glRasterPos2f(36, 316);
+    const char* h2a = "Mouse";
+    for (const char* c = h2a; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+    glColor3f(0.55f, 0.55f, 0.60f);
+    glRasterPos2f(175, 316);
+    const char* h2b = ": Arahkan pandangan";
+    for (const char* c = h2b; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+
+    glColor3f(0.85f, 0.85f, 0.85f);
+    glRasterPos2f(36, 301);
+    const char* h3a = "H";
+    for (const char* c = h3a; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+    glColor3f(0.55f, 0.55f, 0.60f);
+    glRasterPos2f(175, 301);
+    const char* h3b = ": Bersembunyi (dalam kotak kuning)";
+    for (const char* c = h3b; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+
+    glColor3f(1.0f, 0.85f, 0.0f);
+    glRasterPos2f(36, 286);
+    const char* h4a = "Kotak GPS kuning";
+    for (const char* c = h4a; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+    glColor3f(0.55f, 0.55f, 0.60f);
+    glRasterPos2f(175, 286);
+    const char* h4b = ": Menunjuk ke harta";
+    for (const char* c = h4b; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+
+    glColor3f(0.2f, 1.0f, 0.4f);
+    glRasterPos2f(36, 271);
+    const char* h5a = "Kotak GPS hijau";
+    for (const char* c = h5a; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+    glColor3f(0.55f, 0.55f, 0.60f);
+    glRasterPos2f(175, 271);
+    const char* h5b = ": Menunjuk ke pintu keluar";
+    for (const char* c = h5b; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+
+    // ── GARIS PEMISAH ──
+    glColor3f(0.20f, 0.08f, 0.28f);
+    glBegin(GL_LINES);
+    glVertex2f(36, 263); glVertex2f(340, 263);
+    glEnd();
+
+    // ── PERATURAN ──
+    glColor3f(0.55f, 0.35f, 0.70f);
+    glRasterPos2f(36, 249);
+    const char* rulesLabel = "--- PERATURAN ---";
+    for (const char* c = rulesLabel; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+
+    glColor3f(1.0f, 0.35f, 0.15f);
+    glRasterPos2f(36, 234);
+    const char* r1 = "Tiap 40 detik lampu menyala selama 10 detik!";
+    for (const char* c = r1; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+
+    glColor3f(0.75f, 0.75f, 0.80f);
+    glRasterPos2f(36, 219);
+    const char* r2 = "Lampu menyala = musuh mengejar kamu!";
+    for (const char* c = r2; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+
+    glRasterPos2f(36, 204);
+    const char* r3 = "Bersembunyi di peti agar tetap aman.";
+    for (const char* c = r3; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+
+    glRasterPos2f(36, 189);
+    const char* r4 = "Hindari musuh";
+    for (const char* c = r4; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+
+    glColor3f(1.0f, 0.85f, 0.0f);
+    glRasterPos2f(36, 174);
+    const char* r5 = "Keluar membawa seluruh treasure = skor terbaik!";
+    for (const char* c = r5; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+
+    // ── GARIS PEMISAH ──
     glColor3f(0.20f, 0.08f, 0.28f);
     glLineWidth(0.5f);
     glBegin(GL_LINES);
-    glVertex2f(36, cy - 2); glVertex2f(340, cy - 2);
+    glVertex2f(36, 162); glVertex2f(340, 162);
     glEnd();
-    cy -= 16.0f;
 
-    glColor3f(0.45f, 0.28f, 0.55f);
-    glRasterPos2f(36, cy);
-    const char* rulesLabel = "--- RULES ---";
-    for (const char* c = rulesLabel; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
-    cy -= 17.0f;
-
-    struct { const char* line; float r, g, b; } rules[] = {
-        {"Every 40s lights come ON for 10s!", 0.80f, 0.15f, 0.15f},
-        {"Lights make enemies faster.",       0.55f, 0.40f, 0.62f},
-        {"Hide in crates to stay safe!",      0.55f, 0.40f, 0.62f},
-        {"Avoid the dark humanoid enemies!",  0.55f, 0.40f, 0.62f},
-        {"Exit WITH treasure = best score!",  0.80f, 0.65f, 0.0f},
-    };
-    for (int i = 0; i < 5; i++) {
-        glColor3f(rules[i].r, rules[i].g, rules[i].b);
-        glRasterPos2f(36, cy);
-        for (const char* c = rules[i].line; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
-        cy -= 17.0f;
-    }
-
-    // --- GARIS BAWAH ---
-    glColor3f(0.20f, 0.08f, 0.28f);
-    glBegin(GL_LINES);
-    glVertex2f(36, cy - 4); glVertex2f(340, cy - 4);
-    glEnd();
-    cy -= 20.0f;
-
-    // --- TOMBOL START (berkedip) ---
+    // ── TOMBOL MULAI ──
     float ba = 0.5f + 0.5f * sinf(t * 2.5f);
     glColor3f(0.1f * ba, ba * 0.85f, 0.2f * ba);
-    glRasterPos2f(36, cy);
-    const char* startMsg = "> Press ENTER or SPACE to Start";
+    glRasterPos2f(36, 142);
+    const char* startMsg = "> Tekan ENTER atau SPASI untuk Mulai";
     for (const char* c = startMsg; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
 
     endOrtho();
 }
-
 void drawGameOver() {
     prepareStaticScreen(0.04f,0,0);
     beginOrtho();
-    glColor3f(0.04f,0,0);glBegin(GL_QUADS);glVertex2f(0,0);glVertex2f(800,0);glVertex2f(800,600);glVertex2f(0,600);glEnd();
+    glColor3f(0.04f,0,0);
+    glBegin(GL_QUADS);glVertex2f(0,0);glVertex2f(800,0);glVertex2f(800,600);glVertex2f(0,600);glEnd();
     float t=(float)glutGet(GLUT_ELAPSED_TIME)/1000.0f;
     float p=0.7f+0.3f*sinf(t*3.5f);
-    drawTextLarge(255,400,"GAME OVER",p,0.05f,0.05f);
+    drawTextLarge(320,420,"GAME OVER",p,0.05f,0.05f);
+
+    // Tunjukkan di level berapa kalahnya
+    char lvlbuf[32];
+    sprintf(lvlbuf, "Died on Level %d", currentLevel);
+    drawText2D(325, 385, lvlbuf, 0.6f, 0.3f, 0.3f);
+
     char buf[64];
     if(wonWithTreasure){
-        drawText2D(195,340,"You had the treasure but didn't make it...",1,0.75f,0);
-        sprintf(buf,"Survival Score: %d",finalScore);drawText2D(290,300,buf,1,0.75f,0);
+        drawText2D(310,340,"Kamu berhasil mendapat treasure tapi gagal keluar...",1,0.75f,0);
+        sprintf(buf,"Score: %d",finalScore);
+        drawText2D(330,300,buf,1,0.75f,0);
     } else {
-        drawText2D(245,340,"You were caught in the dark...",0.8f,0.4f,0.4f);
-        drawText2D(310,300,"Score: 0",0.6f,0.6f,0.6f);
+        drawText2D(316,340,"Kamu tertangkap...",0.8f,0.4f,0.4f);
+        drawText2D(350,300,"Score: 0",0.6f,0.6f,0.6f);
     }
-    drawTextLarge(220,200,"R - Retry   M - Menu",0.7f,0.7f,0.7f);
+
+    // Tombol retry & menu
+    drawTextLarge(218,220,"R - Retry Level   M - Main Menu",0.7f,0.7f,0.7f);
+
+    // Info retry
+    glColor3f(0.5f, 0.5f, 0.5f);
+    sprintf(buf, "(Retry akan mengulang level saat ini. (level %d))", currentLevel);
+    glRasterPos2f(260, 185);
+    for (const char* c = buf; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+
     endOrtho();
 }
 
@@ -1975,16 +2518,16 @@ void drawWin() {
     beginOrtho();
     glColor3f(0,0.04f,0.02f);glBegin(GL_QUADS);glVertex2f(0,0);glVertex2f(800,0);glVertex2f(800,600);glVertex2f(0,600);glEnd();
     if(wonWithTreasure){
-        drawTextLarge(130,420,"YOU ESCAPED WITH ALL TREASURES!",0.3f,1,0.45f);
+        drawTextLarge(50,420,"KAMU BERHASIL MEMBAWA SEMUA TREASURE!!",0.3f,1,0.45f);
         char buf[64];sprintf(buf,"FINAL SCORE: %d",finalScore);
         drawTextLarge(255,355,buf,0.3f,1,0.3f);
     } else {
         char buf[64];
-        sprintf(buf,"You escaped with %d/%d treasures!", treasuresHeld(), treasureCount);
+        sprintf(buf,"Kamu keluar membawa %d/%d treasure!", treasuresHeld(), treasureCount);
         drawText2D(155,420,buf,0.55f,0.8f,0.55f);
         sprintf(buf,"SCORE: %d", finalScore);
         drawTextLarge(275,355,buf,0.45f,0.65f,0.45f);
-        drawText2D(165,310,"Collect ALL treasures for maximum score!",0.7f,0.7f,0.7f);
+        drawText2D(165,310,"Dapatkan semua treasure untuk skor terbaik!!",0.7f,0.7f,0.7f);
     }
     drawTextLarge(220,240,"R - Retry   M - Menu",0.7f,0.7f,0.7f);
     endOrtho();
@@ -1992,9 +2535,13 @@ void drawWin() {
 
 void display() {
     glLoadIdentity();
-    if(gameState==STATE_MENU)    {drawMenu();    glutSwapBuffers();return;}
-    if(gameState==STATE_GAMEOVER){drawGameOver();glutSwapBuffers();return;}
-    if(gameState==STATE_WIN)     {drawWin();     glutSwapBuffers();return;}
+    if (gameState == STATE_MENU)        { drawMenu();       glutSwapBuffers(); return; }
+    if (gameState == STATE_GAMEOVER)    { drawGameOver();   glutSwapBuffers(); return; }
+    if (gameState == STATE_WIN)         { drawWin();        glutSwapBuffers(); return; }
+    if (gameState == STATE_LEVEL_CLEAR) { drawLevelClear(); glutSwapBuffers(); return; }
+
+    // ── LEVEL CLEAR OVERLAY ──
+    if (levelClearing) { drawLevelClear(); glutSwapBuffers(); return; }
 
     if(lightsOn)glClearColor(0.55f,0.52f,0.45f,1);
     else{float f=0.03f*flickerIntensity;glClearColor(f,f,f*1.4f,1);}
