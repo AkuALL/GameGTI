@@ -16,8 +16,9 @@
 #include <algorithm>
 
 // Mengimpor library pembaca gambar sesuai modul praktikum
-#include "imageloader.h"
-#include "imageloader.cpp"
+#include "src/assets/imageloader.h"
+#include "src/assets/imageloader.cpp"
+#include "src/assets/paths.h"
 #include "src/game/state.h"
 
 // ================= CONSTANTS =================

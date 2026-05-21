@@ -1,3 +1,5 @@
+#include "../assets/paths.h"
+
 // Included from main.cpp. Compile main.cpp only so these definitions stay in one translation unit.
 
 void reshape(int w,int h) {
@@ -15,7 +17,7 @@ void initRendering() {
     glClearColor(0.03f,0.03f,0.06f,1);
     glShadeModel(GL_SMOOTH);
 
-    Image* wallImg = loadBMP("wall.bmp"); 
+    Image* wallImg = loadBMP(ASSET_IMAGE_WALL); 
     wallTextureId = loadTexture(wallImg); 
     delete wallImg; 
 }

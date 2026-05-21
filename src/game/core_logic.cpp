@@ -1,3 +1,5 @@
+#include "../assets/paths.h"
+
 // Included from main.cpp. Compile main.cpp only so these definitions stay in one translation unit.
 
 bool positionValid(float x, float z, float margin = 0.8f) {
@@ -213,7 +215,7 @@ for (int ti = 0; ti < treasureCount; ti++) {
     gameState = STATE_PLAYING;
     startTime = (float)glutGet(GLUT_ELAPSED_TIME) / 1000.0f;
     lastTime = startTime;
-    playBGM("spottheme.wav"); 
+    playBGM(ASSET_SOUND_BGM); 
 }
 
 // ===================================================

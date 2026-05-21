@@ -1,3 +1,5 @@
+#include "../assets/paths.h"
+
 // Included from main.cpp. Compile main.cpp only so these definitions stay in one translation unit.
 
 bool checkEnemyCollision(float newX, float newZ) {
@@ -256,7 +258,7 @@ void updateEnemies(float dt) {
                     jumpscareTimer  = 0.0f;
                     jumpscareAlpha  = 0.0f;
                     jumpscareStartTime = glutGet(GLUT_ELAPSED_TIME);
-                    playSFX("0521.wav"); 
+                    playSFX(ASSET_SOUND_JUMPSCARE); 
 }
             }
             continue;
@@ -323,7 +325,7 @@ void updateEnemies(float dt) {
                         jumpscareTimer  = 0.0f;
                         jumpscareAlpha  = 0.0f;
                         jumpscareStartTime = glutGet(GLUT_ELAPSED_TIME);
-                        playSFX("0521.wav");
+                        playSFX(ASSET_SOUND_JUMPSCARE);
                     }
                 }
             }
