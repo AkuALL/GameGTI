@@ -1,18 +1,29 @@
 // Included from main.cpp. Compile main.cpp only so these definitions stay in one translation unit.
 
-void drawText2D(float x,float y,const char*t,float r,float g,float b) {
-    glColor3f(r,g,b);glRasterPos2f(x,y);
-    for(const char*c=t;*c;c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18,*c);
-}
-void drawTextLarge(float x,float y,const char*t,float r,float g,float b) {
-    glColor3f(r,g,b);glRasterPos2f(x,y);
-    for(const char*c=t;*c;c++) glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24,*c);
-}
-
 int getBitmapTextWidth(void* font, const char* text) {
     int width = 0;
     for (const char* c = text; *c; c++) width += glutBitmapWidth(font, *c);
     return width;
+}
+
+void drawBitmapText(void* font, float x, float y, const char* t, float r, float g, float b) {
+    glColor3f(r,g,b);glRasterPos2f(x,y);
+    for(const char*c=t;*c;c++) glutBitmapCharacter(font,*c);
+}
+void drawText2D(float x,float y,const char*t,float r,float g,float b) {
+    drawBitmapText(GLUT_BITMAP_HELVETICA_18, x, y, t, r, g, b);
+}
+void drawTextLarge(float x,float y,const char*t,float r,float g,float b) {
+    drawBitmapText(GLUT_BITMAP_TIMES_ROMAN_24, x, y, t, r, g, b);
+}
+void drawTextCentered(void* font, float centerX, float y, const char* t, float r, float g, float b) {
+    drawBitmapText(font, centerX - getBitmapTextWidth(font, t) / 2.0f, y, t, r, g, b);
+}
+void drawText2DCentered(float centerX, float y, const char* t, float r, float g, float b) {
+    drawTextCentered(GLUT_BITMAP_HELVETICA_18, centerX, y, t, r, g, b);
+}
+void drawTextLargeCentered(float centerX, float y, const char* t, float r, float g, float b) {
+    drawTextCentered(GLUT_BITMAP_TIMES_ROMAN_24, centerX, y, t, r, g, b);
 }
 
 void beginOrtho() {
@@ -53,9 +64,9 @@ void drawLevelClear() {
 
     // Judul
     if (currentLevel == 1) {
-        drawTextLarge(250, 430, "LEVEL 1- EASY SELESAI!", 0.2f, p, 0.4f);
+        drawTextLargeCentered(400, 430, "LEVEL 1- EASY SELESAI!", 0.2f, p, 0.4f);
     } else if (currentLevel == 2) {
-        drawTextLarge(220, 430, "LEVEL 2-MEDIUM SELESAI!", 0.2f, p, 0.4f);
+        drawTextLargeCentered(400, 430, "LEVEL 2-MEDIUM SELESAI!", 0.2f, p, 0.4f);
     }
 
     // Garis pemisah
@@ -65,7 +76,7 @@ void drawLevelClear() {
     glEnd();
 
     // Teks pilihan
-    drawText2D(330, 365, "Lanjutkan?", 0.7f, 0.9f, 0.7f);
+    drawText2DCentered(400, 365, "Lanjutkan?", 0.7f, 0.9f, 0.7f);
 
     // ── TOMBOL: NEXT LEVEL ──
     float btnW = 220, btnH = 50;
@@ -108,17 +119,17 @@ void drawLevelClear() {
 
     // Info level berikutnya
     glColor3f(0.5f, 0.7f, 0.5f);
-    glRasterPos2f(230, 245);
     const char* info = (currentLevel == 1)
         ? "Level 2: Timer 2 menit! Habis = semua musuh kejar!"
         : "Level 3: 3 Harta. Timer 2 menit! Habis = semua musuh kejar!";
+    glRasterPos2f(400 - getBitmapTextWidth(GLUT_BITMAP_HELVETICA_12, info) / 2.0f, 245);
     for (const char* c = info; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
 
     // Hint keyboard
     float ba = 0.5f + 0.5f * sinf(t * 3.0f);
     glColor3f(ba * 0.4f, ba * 0.8f, ba * 0.4f);
-    glRasterPos2f(320, 200);
     const char* hint = "Press N or M";
+    glRasterPos2f(400 - getBitmapTextWidth(GLUT_BITMAP_HELVETICA_18, hint) / 2.0f, 200);
     for (const char* c = hint; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
 
     endOrtho();

@@ -7,30 +7,30 @@ void drawGameOver() {
     glBegin(GL_QUADS);glVertex2f(0,0);glVertex2f(800,0);glVertex2f(800,600);glVertex2f(0,600);glEnd();
     float t=(float)glutGet(GLUT_ELAPSED_TIME)/1000.0f;
     float p=0.7f+0.3f*sinf(t*3.5f);
-    drawTextLarge(320,420,"GAME OVER",p,0.05f,0.05f);
+    drawTextLargeCentered(400,420,"GAME OVER",p,0.05f,0.05f);
 
     // Tunjukkan di level berapa kalahnya
     char lvlbuf[32];
     sprintf(lvlbuf, "Died on Level %d", currentLevel);
-    drawText2D(325, 385, lvlbuf, 0.6f, 0.3f, 0.3f);
+    drawText2DCentered(400, 385, lvlbuf, 0.6f, 0.3f, 0.3f);
 
     char buf[64];
     if(wonWithTreasure){
-        drawText2D(310,340,"Kamu berhasil mendapat treasure tapi gagal keluar...",1,0.75f,0);
+        drawText2DCentered(400,340,"Kamu berhasil mendapat treasure tapi gagal keluar...",1,0.75f,0);
         sprintf(buf,"Score: %d",finalScore);
-        drawText2D(330,300,buf,1,0.75f,0);
+        drawText2DCentered(400,300,buf,1,0.75f,0);
     } else {
-        drawText2D(316,340,"Kamu tertangkap...",0.8f,0.4f,0.4f);
-        drawText2D(350,300,"Score: 0",0.6f,0.6f,0.6f);
+        drawText2DCentered(400,340,"Kamu tertangkap...",0.8f,0.4f,0.4f);
+        drawText2DCentered(400,300,"Score: 0",0.6f,0.6f,0.6f);
     }
 
     // Tombol retry & menu
-    drawTextLarge(218,220,"R - Retry Level   M - Main Menu",0.7f,0.7f,0.7f);
+    drawTextLargeCentered(400,220,"R - Retry Level   M - Main Menu",0.7f,0.7f,0.7f);
 
     // Info retry
     glColor3f(0.5f, 0.5f, 0.5f);
     sprintf(buf, "(Retry akan mengulang level saat ini. (level %d))", currentLevel);
-    glRasterPos2f(260, 185);
+    glRasterPos2f(400 - getBitmapTextWidth(GLUT_BITMAP_HELVETICA_12, buf) / 2.0f, 185);
     for (const char* c = buf; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
 
     endOrtho();
@@ -41,18 +41,18 @@ void drawWin() {
     beginOrtho();
     glColor3f(0,0.04f,0.02f);glBegin(GL_QUADS);glVertex2f(0,0);glVertex2f(800,0);glVertex2f(800,600);glVertex2f(0,600);glEnd();
     if(wonWithTreasure){
-        drawTextLarge(50,420,"KAMU BERHASIL MEMBAWA SEMUA TREASURE!!",0.3f,1,0.45f);
+        drawTextLargeCentered(400,420,"KAMU BERHASIL MEMBAWA SEMUA TREASURE!!",0.3f,1,0.45f);
         char buf[64];sprintf(buf,"FINAL SCORE: %d",finalScore);
-        drawTextLarge(255,355,buf,0.3f,1,0.3f);
+        drawTextLargeCentered(400,355,buf,0.3f,1,0.3f);
     } else {
         char buf[64];
         sprintf(buf,"Kamu keluar membawa %d/%d treasure!", treasuresHeld(), treasureCount);
-        drawText2D(155,420,buf,0.55f,0.8f,0.55f);
+        drawText2DCentered(400,420,buf,0.55f,0.8f,0.55f);
         sprintf(buf,"SCORE: %d", finalScore);
-        drawTextLarge(275,355,buf,0.45f,0.65f,0.45f);
-        drawText2D(165,310,"Dapatkan semua treasure untuk skor terbaik!!",0.7f,0.7f,0.7f);
+        drawTextLargeCentered(400,355,buf,0.45f,0.65f,0.45f);
+        drawText2DCentered(400,310,"Dapatkan semua treasure untuk skor terbaik!!",0.7f,0.7f,0.7f);
     }
-    drawTextLarge(220,240,"R - Retry   M - Menu",0.7f,0.7f,0.7f);
+    drawTextLargeCentered(400,240,"R - Retry   M - Menu",0.7f,0.7f,0.7f);
     endOrtho();
 }
 
