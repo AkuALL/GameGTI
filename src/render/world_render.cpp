@@ -1,4 +1,7 @@
-// Included from main.cpp. Compile main.cpp only so these definitions stay in one translation unit.
+#include "../../include/render.h"
+#include "../../include/game_state.h"
+
+#include <cmath>
 
 void applyFlicker(float r, float g, float b) {
     glColor3f(r*flickerIntensity, g*flickerIntensity, b*flickerIntensity);

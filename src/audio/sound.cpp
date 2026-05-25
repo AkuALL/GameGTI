@@ -1,4 +1,17 @@
-// Included from main.cpp. Compile main.cpp only so these definitions stay in one translation unit.
+#include "../../include/audio.h"
+#include "../../include/game_state.h"
+
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <mmsystem.h>
+#include <process.h>
+#pragma comment(lib, "winmm.lib")
+#endif
+
+#include <cstring>
 
 void stopSound() {
 #ifdef _WIN32

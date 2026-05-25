@@ -1,6 +1,10 @@
-#include "../assets/paths.h"
+#include "../../include/window.h"
+#include "../../include/game_logic.h"
+#include "../../include/game_state.h"
+#include "../../include/imageloader.h"
+#include "../../include/paths.h"
 
-// Included from main.cpp. Compile main.cpp only so these definitions stay in one translation unit.
+#include <GL/glut.h>
 
 void reshape(int w,int h) {
     if(!h)h=1;

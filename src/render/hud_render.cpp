@@ -1,4 +1,10 @@
-// Included from main.cpp. Compile main.cpp only so these definitions stay in one translation unit.
+#include "../../include/render.h"
+#include "../../include/game_logic.h"
+#include "../../include/game_state.h"
+
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
 
 int getBitmapTextWidth(void* font, const char* text) {
     int width = 0;

@@ -1,8 +1,27 @@
-#include "../assets/paths.h"
+#include "../../include/game_logic.h"
+#include "../../include/audio.h"
+#include "../../include/enemy_ai.h"
+#include "../../include/imageloader.h"
+#include "../../include/paths.h"
 
-// Included from main.cpp. Compile main.cpp only so these definitions stay in one translation unit.
+#include <cmath>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
 
-bool positionValid(float x, float z, float margin = 0.8f) {
+int treasuresHeld() {
+    int count = 0;
+    for (int i = 0; i < treasureCount; i++) {
+        if (treasureCollected[i]) count++;
+    }
+    return count;
+}
+
+bool allTreasuresCollected() {
+    return treasuresHeld() == treasureCount;
+}
+
+bool positionValid(float x, float z, float margin) {
     if (x < MAP_MIN + 1.5f || x > MAP_MAX - 1.5f || z < MAP_MIN + 1.5f || z > MAP_MAX - 1.5f)
         return false;
     for (int i = 0; i < wallCount; i++) {

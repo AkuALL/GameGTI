@@ -1,4 +1,7 @@
-// Included from main.cpp. Compile main.cpp only so these definitions stay in one translation unit.
+#include "../../include/render.h"
+#include "../../include/game_state.h"
+
+#include <cmath>
 
 void drawMiniMazeWall(float x, float y, float w, float h) {
     // Dinding batu gelap dengan lis terang

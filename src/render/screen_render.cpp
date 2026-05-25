@@ -1,4 +1,9 @@
-// Included from main.cpp. Compile main.cpp only so these definitions stay in one translation unit.
+#include "../../include/render.h"
+#include "../../include/game_logic.h"
+#include "../../include/game_state.h"
+
+#include <cstdio>
+#include <cmath>
 
 void drawGameOver() {
     prepareStaticScreen(0.04f,0,0);

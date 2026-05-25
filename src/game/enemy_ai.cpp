@@ -1,6 +1,11 @@
-#include "../assets/paths.h"
+#include "../../include/enemy_ai.h"
+#include "../../include/audio.h"
+#include "../../include/game_logic.h"
+#include "../../include/paths.h"
 
-// Included from main.cpp. Compile main.cpp only so these definitions stay in one translation unit.
+#include <algorithm>
+#include <cmath>
+#include <vector>
 
 bool checkEnemyCollision(float newX, float newZ) {
     const float enemyRadius = 0.18f;

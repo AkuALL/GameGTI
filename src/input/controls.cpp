@@ -1,6 +1,17 @@
-#include "../game/state.h"
+#include "../../include/input.h"
+#include "../../include/game_logic.h"
+#include "../../include/game_state.h"
 
-// Included from main.cpp. Compile main.cpp only so these definitions stay in one translation unit.
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
+
+#include <GL/glut.h>
+#include <cmath>
+#include <cstdlib>
 
 void mouseMotion(int x, int y) {
     if (gameState != STATE_PLAYING) return;
