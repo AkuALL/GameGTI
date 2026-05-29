@@ -24,6 +24,16 @@ int windowWidth = 800, windowHeight = 600;
 bool ignoreNextMouseMove = false;
 
 GLuint wallTextureId = 0;
+GLuint floorTextureId = 0;
+
+GLuint scareTexId1 = 0;
+GLuint scareTexId2 = 0;
+GLuint scareTexId3 = 0;
+
+GLuint cabinetFrontTexId = 0;
+GLuint cabinetBackTexId = 0;
+GLuint cabinetFrontBloodTexId = 0;
+GLuint cabinetBackBloodTexId = 0;
 
 Wall walls[] = {
     { 0,  -20,   40,  0.6f},

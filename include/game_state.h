@@ -29,6 +29,12 @@ extern int windowWidth, windowHeight;
 extern bool ignoreNextMouseMove;
 
 extern GLuint wallTextureId;
+extern GLuint floorTextureId;
+
+extern GLuint scareTexId1;
+extern GLuint scareTexId2;
+extern GLuint scareTexId3;
+
 
 extern Wall walls[];
 extern int wallCount;

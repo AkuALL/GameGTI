@@ -146,10 +146,30 @@ void initEnemies() {
     enemies[7].wpX[3]= -5.0f; enemies[7].wpZ[3]=  7.0f;
 }
 GLuint loadTexture(Image* image) {
+    if (image == NULL) return 0; // Proteksi jika gambar gagal di-load
+
     GLuint textureId;
     glGenTextures(1, &textureId);
     glBindTexture(GL_TEXTURE_2D, textureId);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image->width, image->height, 0, GL_RGB, GL_UNSIGNED_BYTE, image->pixels);
+
+    // Pengaturan filter agar tekstur tidak pecah/blur saat diregangkan di lantai luas
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    
+    // Mengatur agar tekstur mengulang (tiling) secara otomatis dengan rapi
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    // Mengirim data piksel gambar ke dalam OpenGL
+    glTexImage2D(GL_TEXTURE_2D,
+                 0,
+                 GL_RGB,
+                 image->width, image->height,
+                 0,
+                 GL_RGB,
+                 GL_UNSIGNED_BYTE,
+                 image->pixels);
+
     return textureId;
 }
 

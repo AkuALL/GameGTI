@@ -32,4 +32,18 @@ void initRendering() {
     Image* wallImg = loadBMP(ASSET_IMAGE_WALL); 
     wallTextureId = loadTexture(wallImg); 
     delete wallImg; 
+
+    Image* floorImg = loadBMP(ASSET_IMAGE_FLOOR); 
+    floorTextureId = loadTexture(floorImg); 
+    delete floorImg;
+
+    Image* s1 = loadBMP(ASSET_IMAGE_SCARE1);
+    if (s1 != NULL) { scareTexId1 = loadTexture(s1); delete s1; }
+
+    Image* s2 = loadBMP(ASSET_IMAGE_SCARE2);
+    if (s2 != NULL) { scareTexId2 = loadTexture(s2); delete s2; }
+
+    Image* s3 = loadBMP(ASSET_IMAGE_SCARE3);
+    if (s3 != NULL) { scareTexId3 = loadTexture(s3); delete s3; }
+
 }

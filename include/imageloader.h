@@ -47,5 +47,8 @@ class Image {
 };
 
 Image* loadBMP(const char* wall);
+Image* loadBMP(const char* lantai);
+Image* loadBMP(const char* wall1);Image* loadBMP(const char* wall2);Image* loadBMP(const char* wall3);
+
 
 #endif

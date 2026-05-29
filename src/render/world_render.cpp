@@ -41,52 +41,83 @@ void drawStoneSlab(float wx, float wz, float sw, float sh,
 }
 
 void drawFloor() {
-    float slabW=2.0f,slabH=1.5f;
-    int cols=(int)((MAP_MAX-MAP_MIN)/slabW)+1;
-    int rows=(int)((MAP_MAX-MAP_MIN)/slabH)+1;
-    for (int row=0;row<rows;row++) {
-        float fz=MAP_MIN+row*slabH;
-        float ox=(row%2==0)?0.0f:slabW*0.5f;
-        for (int col=0;col<cols;col++) {
-            float fx=MAP_MIN-ox+col*slabW;
-            if (fx+slabW<MAP_MIN||fx>MAP_MAX||fz+slabH<MAP_MIN||fz>MAP_MAX) continue;
-            float var=cellHash(col+row*47,row+col*31)*0.5f+0.5f;
-            float r,g,b,cr,cg,cb; int nc;
+    // 1. AKTIFKAN TEKSTUR LANTAI & ATUR MODULASI CAHAYA
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, floorTextureId);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE); 
+
+    float slabW = 2.0f, slabH = 1.5f;
+    int cols = (int)((MAP_MAX - MAP_MIN) / slabW) + 1;
+    int rows = (int)((MAP_MAX - MAP_MIN) / slabH) + 1;
+
+    for (int row = 0; row < rows; row++) {
+        float fz = MAP_MIN + row * slabH;
+        float ox = (row % 2 == 0) ? 0.0f : slabW * 0.5f;
+        
+        for (int col = 0; col < cols; col++) {
+            float fx = MAP_MIN - ox + col * slabW;
+            if (fx + slabW < MAP_MIN || fx > MAP_MAX || fz + slabH < MAP_MIN || fz > MAP_MAX) continue;
+            
+            float var = cellHash(col + row * 47, row + col * 31) * 0.5f + 0.5f;
+            float r, g, b, cr, cg, cb; int nc;
+            
             if (lightsOn) {
-                float base=0.50f+var*0.18f,warm=0.03f+var*0.04f;
-                r=base+warm;g=base+warm*0.5f;b=base-warm*0.5f;
-                cr=0.28f;cg=0.25f;cb=0.22f;nc=(int)(var*2.5f);
+                float base = 0.50f + var * 0.18f, warm = 0.03f + var * 0.04f;
+                r = base + warm; g = base + warm * 0.5f; b = base - warm * 0.5f;
+                cr = 0.28f; cg = 0.25f; cb = 0.22f; nc = (int)(var * 2.5f);
             } else {
-                float base=0.08f+var*0.07f;
-                r=base*flickerIntensity*0.9f;g=base*flickerIntensity*0.95f;b=(base+0.04f)*flickerIntensity;
-                cr=cg=0.03f*flickerIntensity;cb=0.06f*flickerIntensity;nc=(int)(var*2.0f);
+                float base = 0.08f + var * 0.07f;
+                r = base * flickerIntensity * 0.9f; g = base * flickerIntensity * 0.95f; b = (base + 0.04f) * flickerIntensity;
+                cr = cg = 0.03f * flickerIntensity; cb = 0.06f * flickerIntensity; nc = (int)(var * 2.0f);
             }
-            drawStoneSlab(fx,fz,slabW,slabH,r,g,b,cr,cg,cb,nc);
+
+            glPushMatrix();
+            glColor3f(r, g, b); // Set warna sesuai kondisi lampu/kedip game
+            
+            glBegin(GL_QUADS);
+            glNormal3f(0.0f, 1.0f, 0.0f); 
+            // Mapping koordinat gambar lantai ke tiap-tiap slab ubin batu
+            glTexCoord2f(0.0f, 0.0f); glVertex3f(fx,         0.0f, fz);
+            glTexCoord2f(1.0f, 0.0f); glVertex3f(fx + slabW, 0.0f, fz);
+            glTexCoord2f(1.0f, 1.0f); glVertex3f(fx + slabW, 0.0f, fz + slabH);
+            glTexCoord2f(0.0f, 1.0f); glVertex3f(fx,         0.0f, fz + slabH);
+            glEnd();
+            
+            glPopMatrix();
+
+            // Sisa dekorasi tepi ubin (border) tetap digambar lewat fungsi aslimu
+            drawStoneSlab(fx, fz, slabW, slabH, r, g, b, cr, cg, cb, nc);
         }
     }
-    float ceilH=3.5f,cofSz=3.0f,cofBdr=0.18f,cofDep=0.12f;
-    if (lightsOn) glColor3f(0.68f,0.64f,0.56f);
-    else { float b=0.07f*flickerIntensity; glColor3f(b*0.85f,b*0.8f,b); }
+
+    // MATIKAN TEKSTUR AGAR ATAP / CEILING GAK IKUTAN KENA GAMBAR LANTAI
+    glDisable(GL_TEXTURE_2D);
+
+    // --- BAGIAN ATAP & BALOK CEILING (Tetap ori sesuai kode aslimu) ---
+    float ceilH = 3.5f, cofSz = 3.0f, cofBdr = 0.18f, cofDep = 0.12f;
+    if (lightsOn) glColor3f(0.68f, 0.64f, 0.56f);
+    else { float b = 0.07f * flickerIntensity; glColor3f(b * 0.85f, b * 0.8f, b); }
+    
     glBegin(GL_QUADS);
-    glVertex3f(MAP_MIN,ceilH,MAP_MIN);glVertex3f(MAP_MAX,ceilH,MAP_MIN);
-    glVertex3f(MAP_MAX,ceilH,MAP_MAX);glVertex3f(MAP_MIN,ceilH,MAP_MAX);
+    glVertex3f(MAP_MIN, ceilH, MAP_MIN); glVertex3f(MAP_MAX, ceilH, MAP_MIN);
+    glVertex3f(MAP_MAX, ceilH, MAP_MAX); glVertex3f(MAP_MIN, ceilH, MAP_MAX);
     glEnd();
-    for (float bx=MAP_MIN;bx<=MAP_MAX+cofSz;bx+=cofSz) {
-        glPushMatrix();glTranslatef(bx,ceilH-cofDep*0.5f,(MAP_MIN+MAP_MAX)*0.5f);
-        glScalef(cofBdr,cofDep,MAP_MAX-MAP_MIN+1.0f);
-        if(lightsOn)glColor3f(0.52f,0.48f,0.40f);
-        else{float b=0.04f*flickerIntensity;glColor3f(b*0.8f,b*0.75f,b);}
-        glutSolidCube(1);glPopMatrix();
+    
+    for (float bx = MAP_MIN; bx <= MAP_MAX + cofSz; bx += cofSz) {
+        glPushMatrix(); glTranslatef(bx, ceilH - cofDep * 0.5f, (MAP_MIN + MAP_MAX) * 0.5f);
+        glScalef(cofBdr, cofDep, MAP_MAX - MAP_MIN + 1.0f);
+        if (lightsOn) glColor3f(0.52f, 0.48f, 0.40f);
+        else { float b = 0.04f * flickerIntensity; glColor3f(b * 0.8f, b * 0.75f, b); }
+        glutSolidCube(1); glPopMatrix();
     }
-    for (float bz=MAP_MIN;bz<=MAP_MAX+cofSz;bz+=cofSz) {
-        glPushMatrix();glTranslatef((MAP_MIN+MAP_MAX)*0.5f,ceilH-cofDep*0.5f,bz);
-        glScalef(MAP_MAX-MAP_MIN+1.0f,cofDep,cofBdr);
-        if(lightsOn)glColor3f(0.52f,0.48f,0.40f);
-        else{float b=0.04f*flickerIntensity;glColor3f(b*0.8f,b*0.75f,b);}
-        glutSolidCube(1);glPopMatrix();
+    for (float bz = MAP_MIN; bz <= MAP_MAX + cofSz; bz += cofSz) {
+        glPushMatrix(); glTranslatef((MAP_MIN + MAP_MAX) * 0.5f, ceilH - cofDep * 0.5f, bz);
+        glScalef(MAP_MAX - MAP_MIN + 1.0f, cofDep, cofBdr);
+        if (lightsOn) glColor3f(0.52f, 0.48f, 0.40f);
+        else { float b = 0.04f * flickerIntensity; glColor3f(b * 0.8f, b * 0.75f, b); }
+        glutSolidCube(1); glPopMatrix();
     }
 }
-
 // ===================================================
 // FIXED RENDERING: TEKSTUR DI TENGAH DINDING SAMPING
 // ===================================================
@@ -148,21 +179,37 @@ void drawWall(float x, float z, float sx, float sz) {
     glVertex3f(x + halfX, wainH + trimH, z + halfZ); glVertex3f(x + halfX, wainH, z + halfZ);
     glEnd();
 
-    // 3. GAMBAR BAGIAN ATAS DINDING (BERMOTIF BERJEJER SURAT)
+    // 3. GAMBAR BAGIAN ATAS DINDING (BERMOTIF BERJEJER SURAT / GRAFITI)
     float topStart = wainH + trimH; 
 
     glEnable(GL_TEXTURE_2D);
-    glBindTexture(GL_TEXTURE_2D, wallTextureId);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE); // Penting agar gambar merespons senter
+
+    // --- LOGIKA ACAK UNTUK PILIH GAMBAR GRAFITI HOROR ---
+    GLuint textureDindingSkarang = wallTextureId; // Default pake dinding ori bawaan labirin
+    int checker = (int)(abs(x) * 13 + abs(z) * 7); // Benih pengacak dari posisi koordinat koordinat x dan z
+
+    // Menggunakan modulo angka prima agar kemunculannya langka dan acak di lorong labirin
+    if (checker % 11 == 2) {
+        textureDindingSkarang = scareTexId1; // Memunculkan wall1.bmp ("YOU CANT ESCAPE")
+    } else if (checker % 13 == 4) {
+        textureDindingSkarang = scareTexId2; // Memunculkan wall2.bmp ("TRYING TO HIDE?")
+    } else if (checker % 17 == 5) {
+        textureDindingSkarang = scareTexId3; // Memunculkan wall3.bmp ("RUN FROM THE LIGHT!")
+    }
+
+    glBindTexture(GL_TEXTURE_2D, textureDindingSkarang);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
+    // Pewarnaan permukaan agar warna grafiti merah menyala tajam dan responsif saat senter menyala/redup
     if (lightsOn) {
         glColor3f(1.0f, 1.0f, 1.0f);
     } else {
-        glColor3f(flickerIntensity * 0.4f, flickerIntensity * 0.4f, flickerIntensity * 0.5f);
+        glColor3f(flickerIntensity * 0.9f, flickerIntensity * 0.9f, flickerIntensity * 0.95f);
     }
 
     glBegin(GL_QUADS);
@@ -195,7 +242,8 @@ void drawWall(float x, float z, float sx, float sz) {
     glTexCoord2f(0.0f,  0.0f); glVertex3f(x + halfX, topStart, z + halfZ);
     glEnd();
 
-    // ── SISI ATAS PILAR (Atap) ──
+    // ── SISI ATAS PILAR (Kembalikan ke wallTextureId polos agar bagian atap pilar rapi) ──
+    glBindTexture(GL_TEXTURE_2D, wallTextureId);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     
