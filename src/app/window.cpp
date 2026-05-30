@@ -11,16 +11,9 @@ void reshape(int w,int h) {
     windowWidth = w;
     windowHeight = h;
     lastMouseX = w / 2;
-    int viewportW = w;
-    int viewportH = (int)(w * 3.0f / 4.0f);
-    if (viewportH > h) {
-        viewportH = h;
-        viewportW = (int)(h * 4.0f / 3.0f);
-    }
-    int viewportX = (w - viewportW) / 2;
-    int viewportY = (h - viewportH) / 2;
-    glViewport(viewportX, viewportY, viewportW, viewportH);
-    glMatrixMode(GL_PROJECTION);glLoadIdentity();gluPerspective(65.0,(double)viewportW/viewportH,0.3,200.0);
+
+    glViewport(0, 0, w, h);
+    glMatrixMode(GL_PROJECTION);glLoadIdentity();gluPerspective(65.0,(double)w/h,0.3,200.0);
     glMatrixMode(GL_MODELVIEW);
 }
 
