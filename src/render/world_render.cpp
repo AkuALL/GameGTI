@@ -280,16 +280,9 @@ void drawExit() {
         if (lightsOn) glColor3f(b*0.62f, b*0.60f, b*0.55f);
         else glColor3f(b*0.22f*flickerIntensity, b*0.20f*flickerIntensity, b*0.18f*flickerIntensity);
     };
-    auto brassCol = [&](float b) {
-        // Ornamen coklat tua / gelap
-        if (lightsOn) glColor3f(b*0.38f, b*0.22f, b*0.10f);
-        else glColor3f(b*0.16f*flickerIntensity, b*0.09f*flickerIntensity, b*0.04f*flickerIntensity);
-    };
-
-    auto woodCol = [&](float b) {
-        // Kayu coklat hangat
-        if (lightsOn) glColor3f(b*0.45f, b*0.28f, b*0.12f);
-        else glColor3f(b*0.20f*flickerIntensity, b*0.12f*flickerIntensity, b*0.05f*flickerIntensity);
+    auto doorEdgeCol = [&](float b) {
+        if (lightsOn) glColor3f(b*0.34f, b*0.22f, b*0.12f);
+        else glColor3f(b*0.14f*flickerIntensity, b*0.08f*flickerIntensity, b*0.04f*flickerIntensity);
     };
 
     // ==============================================
@@ -369,70 +362,47 @@ void drawExit() {
 
     const float leafW = doorW * 2.0f;  // lebar penuh
     const float leafD = 0.09f;
+    // Texture pintu keluar dipasang tepat di daun pintu.
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, doorTextureId);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-    // ── Body kayu (papan vertikal) ──
-    const int boards = 5;
-    float boardW = leafW / boards;
+    if (lightsOn) glColor3f(1.0f, 1.0f, 1.0f);
+    else glColor3f(flickerIntensity * 0.85f, flickerIntensity * 0.85f, flickerIntensity * 0.9f);
 
-    for (int b = 0; b < boards; b++) {
-        float bz0 = b * boardW;
-        float bz1 = (b+1) * boardW - 0.025f; // celah antar papan
-        float bv  = (b % 2 == 0) ? 1.0f : 0.82f;
+    glBegin(GL_QUADS);
+    // S texture coord dibalik supaya gambar pintu mirror horizontal.
+    glNormal3f(-1.0f, 0.0f, 0.0f);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f(0.0f,   0.0f,  0.0f);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(0.0f,   0.0f,  leafW);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(0.0f,   doorH, leafW);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(0.0f,   doorH, 0.0f);
 
-        woodCol(bv);
-        glBegin(GL_QUADS);
-        // Muka depan
-        glVertex3f(0,      0,    bz0); glVertex3f(0,     doorH, bz0);
-        glVertex3f(0,      doorH,bz1); glVertex3f(0,     0,     bz1);
-        // Belakang
-        glVertex3f(-leafD, 0,    bz0); glVertex3f(-leafD,0,     bz1);
-        glVertex3f(-leafD, doorH,bz1); glVertex3f(-leafD,doorH, bz0);
-        // Sisi kecil papan
-        woodCol(bv * 0.70f);
-        glVertex3f(0, 0, bz1); glVertex3f(-leafD,0,bz1);
-        glVertex3f(-leafD,doorH,bz1); glVertex3f(0,doorH,bz1);
-        glEnd();
-    }
+    glNormal3f(1.0f, 0.0f, 0.0f);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(-leafD, 0.0f,  0.0f);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f(-leafD, 0.0f,  leafW);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(-leafD, doorH, leafW);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(-leafD, doorH, 0.0f);
+    glEnd();
+    glDisable(GL_TEXTURE_2D);
 
-    // ── 3 STRIP BESI HORIZONTAL ──
-    float stripY[3] = { doorH*0.18f, doorH*0.50f, doorH*0.80f };
-    for (int i = 0; i < 3; i++) {
-        // Strip utama
-        brassCol(1.0f);
-        glPushMatrix();
-        glTranslatef(-leafD*0.5f, stripY[i], leafW*0.5f);
-        glScalef(leafD + 0.04f, 0.11f, leafW * 0.96f);
-        glutSolidCube(1);
-        glPopMatrix();
+    doorEdgeCol(0.75f);
+    glBegin(GL_QUADS);
+    glVertex3f(0.0f,   0.0f,  0.0f);  glVertex3f(-leafD, 0.0f,  0.0f);
+    glVertex3f(-leafD, doorH, 0.0f);  glVertex3f(0.0f,   doorH, 0.0f);
 
-        // Paku/rivet di kiri-tengah-kanan
-        float rivZ[3] = { leafW*0.15f, leafW*0.50f, leafW*0.85f };
-        for (int r = 0; r < 3; r++) {
-            glColor3f(0.75f, 0.60f, 0.20f);
-            glPushMatrix();
-            glTranslatef(0.04f, stripY[i], rivZ[r]);
-            glutSolidSphere(0.038f, 7, 7);
-            glPopMatrix();
-        }
-    }
+    glVertex3f(0.0f,   0.0f,  leafW); glVertex3f(0.0f,   doorH, leafW);
+    glVertex3f(-leafD, doorH, leafW); glVertex3f(-leafD, 0.0f,  leafW);
 
-    // ── ORNAMEN TENGAH (lingkaran brass) ──
-    brassCol(1.0f);
-    glPushMatrix();
-    glTranslatef(0.05f, doorH * 0.50f, leafW * 0.50f);
-    glutSolidSphere(0.13f, 12, 12);
-    glPopMatrix();
-
-    // ── HANDLE / RING ──
-    glColor3f(0.80f, 0.65f, 0.22f);
-    glPushMatrix();
-    glTranslatef(-leafD - 0.06f, doorH * 0.46f, leafW * 0.85f);
-    glutSolidTorus(0.025f, 0.10f, 8, 14);
-    glPopMatrix();
+    glVertex3f(0.0f,   doorH, 0.0f);  glVertex3f(-leafD, doorH, 0.0f);
+    glVertex3f(-leafD, doorH, leafW); glVertex3f(0.0f,   doorH, leafW);
+    glEnd();
 
     glPopMatrix(); // end door leaf
-
-    glPopMatrix();
 }
 void drawHidingSpots() {
     float t=(float)glutGet(GLUT_ELAPSED_TIME)/1000.0f;

@@ -25,6 +25,7 @@ bool ignoreNextMouseMove = false;
 
 GLuint wallTextureId = 0;
 GLuint floorTextureId = 0;
+GLuint doorTextureId = 0;
 
 GLuint scareTexId1 = 0;
 GLuint scareTexId2 = 0;

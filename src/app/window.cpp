@@ -37,6 +37,10 @@ void initRendering() {
     floorTextureId = loadTexture(floorImg); 
     delete floorImg;
 
+    Image* doorImg = loadBMP(ASSET_IMAGE_DOOR);
+    doorTextureId = loadTexture(doorImg);
+    delete doorImg;
+
     Image* s1 = loadBMP(ASSET_IMAGE_SCARE1);
     if (s1 != NULL) { scareTexId1 = loadTexture(s1); delete s1; }
 

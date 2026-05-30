@@ -11,9 +11,9 @@ namespace {
 //Konversi 4 buah karakter ke integer,  
 //menggunakan bentuk little-endian 
   int toInt(const char* bytes) { 
-    return (int)(((unsigned char)bytes[3] << 24) | 
-   ((unsigned char)bytes[2] << 16) | 
-   ((unsigned char)bytes[1] << 8) | 
+    return (int)(((unsigned int)(unsigned char)bytes[3] << 24) | 
+   ((unsigned int)(unsigned char)bytes[2] << 16) | 
+   ((unsigned int)(unsigned char)bytes[1] << 8) | 
    (unsigned char)bytes[0]); 
  } 
   //Konversi 2 buah karakter ke integer,  
@@ -34,6 +34,28 @@ namespace {
  input.read(buffer, 2); 
  return toShort(buffer); 
   } 
+  struct ColorMask {
+   unsigned int mask;
+   int shift;
+   int bits;
+  };
+  ColorMask makeMask(unsigned int mask) {
+   ColorMask colorMask = {mask, 0, 0};
+   if (mask == 0) return colorMask;
+   while (((mask >> colorMask.shift) & 1) == 0) colorMask.shift++;
+   unsigned int shifted = mask >> colorMask.shift;
+   while ((shifted & 1) == 1) {
+    colorMask.bits++;
+    shifted >>= 1;
+   }
+   return colorMask;
+  }
+  unsigned char getMaskedChannel(unsigned int pixel, const ColorMask &colorMask) {
+   if (colorMask.mask == 0 || colorMask.bits == 0) return 0;
+   unsigned int value = (pixel & colorMask.mask) >> colorMask.shift;
+   if (colorMask.bits >= 8) return (unsigned char)(value >> (colorMask.bits - 8));
+   return (unsigned char)((value * 255) / ((1u << colorMask.bits) - 1));
+  }
   template<class T> 
   class auto_array { 
   private: 
@@ -101,53 +123,92 @@ Image* loadBMP(const char* filename) {
   
  int headerSize = readInt(input); 
  int width; 
- int height; 
+ int height;
+ int bitsPerPixel = 24;
+ int compression = 0;
+ unsigned int redMask = 0x00FF0000;
+ unsigned int greenMask = 0x0000FF00;
+ unsigned int blueMask = 0x000000FF;
  switch(headerSize) { 
   case 40: 
    width = readInt(input); 
    height = readInt(input); 
-   input.ignore(2); 
-   assert(readShort(input) == 24 || !"Gambar tidak 24 bits per pixel!"); 
-   assert(readShort(input) == 0 || !"Gambar dikompres!"); 
+   assert(readShort(input) == 1 || !"Bitmap planes tidak valid!");
+   bitsPerPixel = readShort(input);
+   compression = readInt(input);
    break; 
   case 12: 
    width = readShort(input); 
    height = readShort(input); 
-   input.ignore(2); 
-   assert(readShort(input) == 24 || !"Gambar tidak 24 bits per pixel!"); 
+   assert(readShort(input) == 1 || !"Bitmap planes tidak valid!");
+   bitsPerPixel = readShort(input);
+   compression = 0;
    break; 
   case 64: 
    assert(!"Tidak dapat mengambil OS/2 V2 bitmaps"); 
    break; 
   case 108: 
-   assert(!"Tidak dapat mengambil Windows V4 bitmaps"); 
-   break; 
   case 124: 
-   assert(!"Tidak dapat mengambil Windows V5 bitmaps"); 
+   width = readInt(input); 
+   height = readInt(input); 
+   assert(readShort(input) == 1 || !"Bitmap planes tidak valid!");
+   bitsPerPixel = readShort(input);
+   compression = readInt(input);
    break; 
   default: 
    assert(!"Format bitmap ini tidak diketahui!"); 
  } 
+
+ assert((bitsPerPixel == 24 || bitsPerPixel == 32) || !"Gambar harus 24 atau 32 bits per pixel!");
+ if (bitsPerPixel == 24) {
+  assert(compression == 0 || !"Bitmap 24-bit harus tanpa kompresi!");
+ } else {
+  assert((compression == 0 || compression == 3) || !"Bitmap 32-bit harus RGB atau bitfields!");
+  if (compression == 3) {
+   input.seekg(14 + 40, ios_base::beg);
+   redMask = (unsigned int)readInt(input);
+   greenMask = (unsigned int)readInt(input);
+   blueMask = (unsigned int)readInt(input);
+  }
+ }
   
  //Membaca data 
- int bytesPerRow = ((width * 3 + 3) / 4) * 4 - (width * 3 % 4); 
- int size = bytesPerRow * height; 
+ int bytesPerPixel = bitsPerPixel / 8;
+ int absHeight = height < 0 ? -height : height;
+ bool topDown = height < 0;
+ int bytesPerRow = ((width * bytesPerPixel + 3) / 4) * 4; 
+ int size = bytesPerRow * absHeight; 
  auto_array<char> pixels(new char[size]); 
  input.seekg(dataOffset, ios_base::beg); 
  input.read(pixels.get(), size); 
   
  //Mengambil data yang mempunyai format benar 
- auto_array<char> pixels2(new char[width * height * 3]); 
- for(int y = 0; y < height; y++) { 
+ auto_array<char> pixels2(new char[width * absHeight * 3]);
+ ColorMask rMask = makeMask(redMask);
+ ColorMask gMask = makeMask(greenMask);
+ ColorMask bMask = makeMask(blueMask);
+ for(int y = 0; y < absHeight; y++) {
+  int destY = topDown ? absHeight - 1 - y : y;
   for(int x = 0; x < width; x++) { 
-   for(int c = 0; c < 3; c++) { 
-    pixels2[3 * (width * y + x) + c] = 
-     pixels[bytesPerRow * y + 3 * x + (2 - 
-c)]; 
+   int dest = 3 * (width * destY + x);
+   int src = bytesPerRow * y + bytesPerPixel * x;
+   if (bitsPerPixel == 24) {
+    for(int c = 0; c < 3; c++) { 
+     pixels2[dest + c] = pixels[src + (2 - c)]; 
+    }
+   } else {
+    unsigned int pixel =
+     ((unsigned char)pixels[src]) |
+     ((unsigned int)(unsigned char)pixels[src + 1] << 8) |
+     ((unsigned int)(unsigned char)pixels[src + 2] << 16) |
+     ((unsigned int)(unsigned char)pixels[src + 3] << 24);
+    pixels2[dest] = (char)getMaskedChannel(pixel, rMask);
+    pixels2[dest + 1] = (char)getMaskedChannel(pixel, gMask);
+    pixels2[dest + 2] = (char)getMaskedChannel(pixel, bMask);
    } 
   } 
  } 
   
  input.close(); 
- return new Image(pixels2.release(), width, height); 
+ return new Image(pixels2.release(), width, absHeight); 
 }

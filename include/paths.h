@@ -3,6 +3,7 @@
 
 #define ASSET_IMAGE_WALL "assets/images/wall.bmp"
 #define ASSET_IMAGE_FLOOR "assets/images/lantai.bmp"
+#define ASSET_IMAGE_DOOR "assets/images/pintu.bmp"
 
 #define ASSET_IMAGE_SCARE1 "assets/images/wall1.bmp"
 #define ASSET_IMAGE_SCARE2 "assets/images/wall2.bmp"
