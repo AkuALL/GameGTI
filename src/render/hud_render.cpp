@@ -12,6 +12,11 @@ int getBitmapTextWidth(void* font, const char* text) {
     return width;
 }
 
+float getBitmapTextWidthOrtho(void* font, const char* text) {
+    float scaleX = (windowWidth > 0) ? (800.0f / windowWidth) : 1.0f;
+    return getBitmapTextWidth(font, text) * scaleX;
+}
+
 void drawBitmapText(void* font, float x, float y, const char* t, float r, float g, float b) {
     glColor3f(r,g,b);glRasterPos2f(x,y);
     for(const char*c=t;*c;c++) glutBitmapCharacter(font,*c);
@@ -23,7 +28,7 @@ void drawTextLarge(float x,float y,const char*t,float r,float g,float b) {
     drawBitmapText(GLUT_BITMAP_TIMES_ROMAN_24, x, y, t, r, g, b);
 }
 void drawTextCentered(void* font, float centerX, float y, const char* t, float r, float g, float b) {
-    drawBitmapText(font, centerX - getBitmapTextWidth(font, t) / 2.0f, y, t, r, g, b);
+    drawBitmapText(font, centerX - getBitmapTextWidthOrtho(font, t) / 2.0f, y, t, r, g, b);
 }
 void drawText2DCentered(float centerX, float y, const char* t, float r, float g, float b) {
     drawTextCentered(GLUT_BITMAP_HELVETICA_18, centerX, y, t, r, g, b);
@@ -128,15 +133,12 @@ void drawLevelClear() {
     const char* info = (currentLevel == 1)
         ? "Level 2: Timer 2 menit! Habis = semua musuh kejar!"
         : "Level 3: 3 Harta. Timer 2 menit! Habis = semua musuh kejar!";
-    glRasterPos2f(400 - getBitmapTextWidth(GLUT_BITMAP_HELVETICA_12, info) / 2.0f, 245);
-    for (const char* c = info; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+    drawTextCentered(GLUT_BITMAP_HELVETICA_12, 400, 245, info, 0.5f, 0.7f, 0.5f);
 
     // Hint keyboard
     float ba = 0.5f + 0.5f * sinf(t * 3.0f);
-    glColor3f(ba * 0.4f, ba * 0.8f, ba * 0.4f);
     const char* hint = "Press N or M";
-    glRasterPos2f(400 - getBitmapTextWidth(GLUT_BITMAP_HELVETICA_18, hint) / 2.0f, 200);
-    for (const char* c = hint; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
+    drawTextCentered(GLUT_BITMAP_HELVETICA_18, 400, 200, hint, ba * 0.4f, ba * 0.8f, ba * 0.4f);
 
     endOrtho();
 }
@@ -248,7 +250,7 @@ void drawJumpscare() {
     if (elapsed > 0.15f) {
         const char* msg = "FOUND YOU";
         void* font = GLUT_BITMAP_TIMES_ROMAN_24;
-        float textX = 400.0f - getBitmapTextWidth(font, msg) / 2.0f;
+        float textX = 400.0f - getBitmapTextWidthOrtho(font, msg) / 2.0f;
         float textY = 160.0f;
 
         // Shadow teks

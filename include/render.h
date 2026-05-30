@@ -4,6 +4,7 @@
 #include <GL/glut.h>
 
 int getBitmapTextWidth(void* font, const char* text);
+float getBitmapTextWidthOrtho(void* font, const char* text);
 void drawBitmapText(void* font, float x, float y, const char* t, float r, float g, float b);
 void drawText2D(float x, float y, const char* t, float r, float g, float b);
 void drawTextLarge(float x, float y, const char* t, float r, float g, float b);

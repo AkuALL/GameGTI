@@ -33,10 +33,8 @@ void drawGameOver() {
     drawTextLargeCentered(400,220,"R - Retry Level   M - Main Menu",0.7f,0.7f,0.7f);
 
     // Info retry
-    glColor3f(0.5f, 0.5f, 0.5f);
     sprintf(buf, "(Retry akan mengulang level saat ini. (level %d))", currentLevel);
-    glRasterPos2f(400 - getBitmapTextWidth(GLUT_BITMAP_HELVETICA_12, buf) / 2.0f, 185);
-    for (const char* c = buf; *c; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+    drawTextCentered(GLUT_BITMAP_HELVETICA_12, 400, 185, buf, 0.5f, 0.5f, 0.5f);
 
     endOrtho();
 }
