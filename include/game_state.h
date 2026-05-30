@@ -31,6 +31,9 @@ extern bool ignoreNextMouseMove;
 extern GLuint wallTextureId;
 extern GLuint floorTextureId;
 extern GLuint doorTextureId;
+extern GLuint cabinetFrontTexId;
+extern GLuint cabinetBackTexId;
+extern GLuint cabinetSideTexId;
 
 extern GLuint scareTexId1;
 extern GLuint scareTexId2;

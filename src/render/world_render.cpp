@@ -404,25 +404,79 @@ void drawExit() {
 
     glPopMatrix(); // end door leaf
 }
+void bindCabinetTexture(GLuint textureId) {
+    glBindTexture(GL_TEXTURE_2D, textureId);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+}
+
+void drawCabinetHidingSpot() {
+    const float scale = 1.5f;
+    const float w = 0.9f * scale;
+    const float h = 1.65f * scale;
+    const float d = 0.58f * scale;
+    const float halfW = w * 0.5f;
+    const float halfD = d * 0.5f;
+
+    glEnable(GL_TEXTURE_2D);
+    glColor3f(0.56f, 0.28f, 0.11f);
+
+    bindCabinetTexture(cabinetFrontTexId);
+    glBegin(GL_QUADS);
+    glNormal3f(0.0f, 0.0f, 1.0f);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(-halfW, 0.0f, halfD);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f( halfW, 0.0f, halfD);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f( halfW, h,    halfD);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(-halfW, h,    halfD);
+    glEnd();
+
+    bindCabinetTexture(cabinetBackTexId);
+    glBegin(GL_QUADS);
+    glNormal3f(0.0f, 0.0f, -1.0f);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f( halfW, 0.0f, -halfD);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f(-halfW, 0.0f, -halfD);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(-halfW, h,    -halfD);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f( halfW, h,    -halfD);
+    glEnd();
+
+    bindCabinetTexture(cabinetSideTexId);
+    glBegin(GL_QUADS);
+    glNormal3f(-1.0f, 0.0f, 0.0f);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(-halfW, 0.0f, -halfD);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f(-halfW, 0.0f,  halfD);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(-halfW, h,     halfD);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(-halfW, h,    -halfD);
+
+    glNormal3f(1.0f, 0.0f, 0.0f);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f(halfW, 0.0f, -halfD);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(halfW, 0.0f,  halfD);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f(halfW, h,     halfD);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f(halfW, h,    -halfD);
+
+    glNormal3f(0.0f, 1.0f, 0.0f);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(-halfW, h, -halfD);
+    glTexCoord2f(1.0f, 0.0f); glVertex3f(-halfW, h,  halfD);
+    glTexCoord2f(1.0f, 1.0f); glVertex3f( halfW, h,  halfD);
+    glTexCoord2f(0.0f, 1.0f); glVertex3f( halfW, h, -halfD);
+    glEnd();
+
+    glDisable(GL_TEXTURE_2D);
+}
+
 void drawHidingSpots() {
     float t=(float)glutGet(GLUT_ELAPSED_TIME)/1000.0f;
     for (int i=0;i<hidingCount;i++) {
         glPushMatrix();glTranslatef(hidingSpots[i].x,0,hidingSpots[i].z);
-        if(lightsOn)glColor3f(0.55f,0.38f,0.18f);
-        else{float p=0.3f+0.08f*sinf(t*1.5f+i);applyFlicker(p*0.9f,p*0.65f,p*0.2f);}
-        glPushMatrix();glTranslatef(0,0.42f,0);glScalef(0.75f,0.84f,0.75f);glutSolidCube(1);glPopMatrix();
-        if(lightsOn)glColor3f(0.65f,0.48f,0.22f);
-        else{float p=0.4f+0.10f*sinf(t*1.5f+i);applyFlicker(p,p*0.7f,p*0.25f);}
-        glPushMatrix();glTranslatef(0,0.88f,0);glScalef(0.80f,0.10f,0.80f);glutSolidCube(1);glPopMatrix();
-        glColor3f(0.18f,0.11f,0.04f);
-        glPushMatrix();glTranslatef(0,0.42f,0.39f);glScalef(0.75f,0.06f,0.04f);glutSolidCube(1);glPopMatrix();
-        glPushMatrix();glTranslatef(0,0.42f,0.39f);glScalef(0.06f,0.84f,0.04f);glutSolidCube(1);glPopMatrix();
         float glow=0.25f+0.1f*sinf(t*2.0f+i);
         if(lightsOn)glColor3f(0.8f,0.7f,0);else glColor3f(glow*0.9f,glow*0.6f,0);
         glBegin(GL_QUADS);
-        glVertex3f(-0.5f,0.01f,-0.5f);glVertex3f(0.5f,0.01f,-0.5f);
-        glVertex3f(0.5f,0.01f,0.5f);glVertex3f(-0.5f,0.01f,0.5f);
+        glVertex3f(-0.55f,0.01f,-0.45f);glVertex3f(0.55f,0.01f,-0.45f);
+        glVertex3f(0.55f,0.01f,0.45f);glVertex3f(-0.55f,0.01f,0.45f);
         glEnd();
+        drawCabinetHidingSpot();
         glPopMatrix();
     }
 }

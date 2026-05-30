@@ -33,6 +33,7 @@ GLuint scareTexId3 = 0;
 
 GLuint cabinetFrontTexId = 0;
 GLuint cabinetBackTexId = 0;
+GLuint cabinetSideTexId = 0;
 GLuint cabinetFrontBloodTexId = 0;
 GLuint cabinetBackBloodTexId = 0;
 

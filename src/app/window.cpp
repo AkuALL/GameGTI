@@ -41,6 +41,18 @@ void initRendering() {
     doorTextureId = loadTexture(doorImg);
     delete doorImg;
 
+    Image* cabinetFrontImg = loadBMP(ASSET_IMAGE_CABINET_FRONT);
+    cabinetFrontTexId = loadTexture(cabinetFrontImg);
+    delete cabinetFrontImg;
+
+    Image* cabinetBackImg = loadBMP(ASSET_IMAGE_CABINET_BACK);
+    cabinetBackTexId = loadTexture(cabinetBackImg);
+    delete cabinetBackImg;
+
+    Image* cabinetSideImg = loadBMP(ASSET_IMAGE_CABINET_SIDE);
+    cabinetSideTexId = loadTexture(cabinetSideImg);
+    delete cabinetSideImg;
+
     Image* s1 = loadBMP(ASSET_IMAGE_SCARE1);
     if (s1 != NULL) { scareTexId1 = loadTexture(s1); delete s1; }
 
