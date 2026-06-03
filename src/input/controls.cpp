@@ -167,5 +167,3 @@ void specialKeysUp(int key, int x, int y) {
     if (key >= 0 && key < 256) specialKeyStates[key] = false;
 }
 
-// ===================================================
-// RENDERING HELPERS & MAP COMPONENTS
