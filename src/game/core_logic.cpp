@@ -43,6 +43,37 @@ void randomPos(float &x, float &z) {
     } while (!positionValid(x, z) && tries < 1000);
 }
 
+namespace {
+struct SpawnPoint {
+    float x;
+    float z;
+};
+
+const SpawnPoint playerSpawnPoints[] = {
+    {-18.0f,  18.0f},
+    { 18.0f,  18.0f},
+    {-12.0f, -18.0f},
+    { 12.0f, -18.0f},
+};
+
+bool choosePlayerSpawn(float &x, float &z, float exitInsideX, float exitInsideZ) {
+    const int spawnCount = sizeof(playerSpawnPoints) / sizeof(playerSpawnPoints[0]);
+    int startIndex = rand() % spawnCount;
+
+    for (int offset = 0; offset < spawnCount; offset++) {
+        const SpawnPoint &spawn = playerSpawnPoints[(startIndex + offset) % spawnCount];
+        if (positionValid(spawn.x, spawn.z) &&
+            pathExists(spawn.x, spawn.z, exitInsideX, exitInsideZ)) {
+            x = spawn.x;
+            z = spawn.z;
+            return true;
+        }
+    }
+
+    return false;
+}
+}
+
 // ===================================================
 // PLAYER COLLISION
 // ===================================================
@@ -207,12 +238,7 @@ void resetGame(int level) {
     const float exitInsideX = 18.5f;
     const float exitInsideZ = -12.0f;
 
-    int playerTries = 0;
-    do {
-        randomPos(playerX, playerZ);
-        playerTries++;
-    } while (!pathExists(playerX, playerZ, exitInsideX, exitInsideZ) && playerTries < 1000);
-    if (!pathExists(playerX, playerZ, exitInsideX, exitInsideZ)) {
+    if (!choosePlayerSpawn(playerX, playerZ, exitInsideX, exitInsideZ)) {
         playerX = 18.0f;
         playerZ = -12.0f;
     }
